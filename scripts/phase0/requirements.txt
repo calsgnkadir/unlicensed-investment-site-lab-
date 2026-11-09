@@ -1,0 +1,4 @@
+# Aşama 0 aday çıkarma betiği için bağımlılıklar.
+# Public Suffix List paketin içinde gelir, çalışırken ağa çıkmaz.
+PyMuPDF
+publicsuffixlist
