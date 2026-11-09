@@ -1,0 +1,51 @@
+# Gizli veri: Şüpheli liste, kontrol grubu, port verisi
+data/private/
+
+# Ham ve geçici veri
+data/raw/
+*.pcap
+*.pcapng
+
+# Gizli bilgiler
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+*.pfx
+*.key
+*.pem
+secrets.json
+
+# .NET derleme çıktıları
+bin/
+obj/
+out/
+publish/
+artifacts/
+TestResults/
+*.user
+*.suo
+coverage*.xml
+coverage*.json
+
+# Veritabanı ve log dosyaları
+*.db
+*.db-shm
+*.db-wal
+*.log
+logs/
+
+# Docker yerel verisi
+.docker-data/
+
+# Düzenleyici ve işletim sistemi
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
