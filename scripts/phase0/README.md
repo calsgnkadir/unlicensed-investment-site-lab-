@@ -80,3 +80,13 @@ Satırlarda `'` ile başlayan hücre görürsen: CSV formül enjeksiyonunu önle
 - Boyut sınırları: dosya 50 MB, 1500 sayfa, sayfa başına 1 milyon karakter, dosya başına 50.000 aday.
 - Taranmış (görüntü) PDF'ten metin çıkmaz. OCR yoktur.
 - Testler küçük sahte bir Public Suffix listesiyle çalışır. Gerçek paketle davranış ilk gerçek çalıştırmada kontrol edilmelidir. Gerçek PSL'de `.example` gibi ayrılmış uzantılar bulunmaz.
+
+## Excel ile doğrulama
+
+1. `python scripts/phase0/make_review_sheet.py` komutu `data/private/phase0/dogrulama.xlsx` dosyasını üretir. Her alan adı ve bülten çifti tek satırdır. Altlıktaki adres ifadesi ve resmi adresler çıkarılmıştır.
+2. Her satırda "PDF aç" bağlantısıyla bülteni aç, ilgili sayfada adresin gerçekten erişim engeli kararında geçtiğini kontrol et.
+3. `karar` sütununa EVET, HAYIR veya EMIN_DEGIL yaz. EVET ise `karar_tarihi` (bülten tarihi) ve `kategori` sütunlarını da doldur.
+4. `python scripts/phase0/export_verified.py` komutu yalnızca eksiksiz EVET satırlarını `data/private/phase0/engellenenler.csv` dosyasına yazar.
+5. Yükleme: `dotnet run --project src/Fraud.Collectors -- import-official-actions`
+
+Tablo ve CSV git dışındadır. Betikler karar vermez.
