@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fraud.Domain\Fraud.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="Nager.PublicSuffix" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Public Suffix List sabit bir kopya olarak derlemeye gömülür (bkz. DomainNames/README.md). -->
+    <EmbeddedResource Include="DomainNames\public_suffix_list.dat" LogicalName="Fraud.Infrastructure.public_suffix_list.dat" />
+  </ItemGroup>
+
+</Project>

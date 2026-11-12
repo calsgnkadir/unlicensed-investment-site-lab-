@@ -1,0 +1,58 @@
+# Yerel laboratuvar ortamı. Portlar yalnızca bu makineden (127.0.0.1) erişilebilir.
+# Başlatmadan önce: cp .env.example .env ve parolayı değiştirin.
+name: fraud-lab
+
+services:
+  db:
+    # Sabit sürüm. tests/Fraud.Integration.Tests/Infrastructure/PostgresFixture.cs ile aynı olmalı.
+    image: postgres:17.9-alpine3.23
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fraud_lab
+      POSTGRES_USER: fraud_lab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env dosyasında tanımlı olmalı}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraud_lab -d fraud_lab"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Fraud.Api/Dockerfile
+    image: fraud-lab-api:dev
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__FraudDb: "Host=db;Port=5432;Database=fraud_lab;Username=fraud_lab;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
+      Database__MigrateOnStartup: "true"
+    ports:
+      - "127.0.0.1:${API_PORT:-58080}:8080"
+    healthcheck:
+      # Çalışma imajında curl yok; uygulama kendi /health/ready adresini sorar.
+      test: ["CMD", "dotnet", "Fraud.Api.dll", "--health-probe"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  db_data:

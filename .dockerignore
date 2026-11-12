@@ -1,0 +1,15 @@
+# İzin listesi: Derleme bağlamına yalnızca derleme için gereken dosyalar girer.
+# data/, .env ve diğer her şey varsayılan olarak dışarıda kalır.
+*
+!global.json
+!Directory.Build.props
+!Directory.Packages.props
+!.editorconfig
+!src/
+
+# src/ altında da derleme çıktıları ve yerel gizli dosyalar girmez.
+**/bin/
+**/obj/
+**/*.user
+**/appsettings.*.local.json
+**/secrets.json

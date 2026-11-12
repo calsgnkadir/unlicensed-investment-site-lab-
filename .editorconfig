@@ -1,0 +1,17 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+indent_size = 4
+
+[*.{csproj,props,targets,slnx,xml,json,yml,yaml}]
+indent_size = 2
+
+# EF Core migration dosyaları araçla üretilir; kod analizi kuralları bunlara uygulanmaz.
+[**/Migrations/*.cs]
+generated_code = true

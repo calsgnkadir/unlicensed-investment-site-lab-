@@ -1,0 +1,2 @@
+# Public Suffix List sabit kopyadır; satır sonları değiştirilmez (sha256 değişmesin).
+src/Fraud.Infrastructure/DomainNames/public_suffix_list.dat -text
