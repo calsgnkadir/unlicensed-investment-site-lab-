@@ -4,7 +4,9 @@ using Fraud.Collectors.Collection;
 using Fraud.Collectors.CrtSh;
 using Fraud.Collectors.Http;
 using Fraud.Collectors.Quality;
+using Fraud.Collectors.StaticCt;
 using Fraud.Collectors.Wayback;
+using Fraud.Domain.CertificateTransparency;
 using Fraud.Domain.Collection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,7 +15,7 @@ namespace Fraud.Collectors;
 
 public static class CollectorServiceCollectionExtensions
 {
-    /// <summary>crt.sh ve Wayback toplayıcılarını, çalıştırıcıyı ve kalite raporunu kaydeder.</summary>
+    /// <summary>crt.sh, Wayback ve Static CT toplayıcılarını, çalıştırıcıyı ve kalite raporunu kaydeder.</summary>
     public static IServiceCollection AddCollectors(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -51,12 +53,54 @@ public static class CollectorServiceCollectionExtensions
             .ConfigureHttpClient(c => ConfigureClient(c, collection.UserAgent))
             .ConfigurePrimaryHttpMessageHandler(CreatePrimaryHandler);
 
+        AddStaticCt(services, configuration);
+
         services.AddScoped<ISourceCollector, CrtShCollector>();
         services.AddScoped<ISourceCollector, WaybackCollector>();
         services.AddScoped<CollectionRunner>();
         services.AddScoped<QualityReportBuilder>();
         return services;
     }
+
+    /// <summary>Static CT istemcisi, saklama filtresi, durum deposu ve metrikler.</summary>
+    public static IServiceCollection AddStaticCt(IServiceCollection services, IConfiguration configuration)
+    {
+        var staticCt = Bind<StaticCtOptions>(configuration, StaticCtOptions.SectionName);
+        staticCt.Validate();
+        var filter = new KeywordCandidateFilter(Bind<CandidateFilterOptions>(configuration, CandidateFilterOptions.SectionName));
+        var userAgent = Bind<CollectionOptions>(configuration, CollectionOptions.SectionName).UserAgent;
+
+        services.AddSingleton(staticCt);
+        services.AddSingleton<ICandidateFilter>(filter);
+        services.AddSingleton(sp => new StaticCtMetrics(sp.GetService<System.Diagnostics.Metrics.IMeterFactory>()));
+        services.AddSingleton<IStaticCtClientFactory, StaticCtClientFactory>();
+        services.AddScoped<ICtStateStore, EfCtStateStore>();
+        services.AddHttpClient(StaticCtClientFactory.HttpClientName)
+            .ConfigureHttpClient(c => ConfigureStaticCtClient(c, userAgent))
+            .ConfigurePrimaryHttpMessageHandler(() => CreateStaticCtHandler(staticCt.MaxConcurrency));
+        return services;
+    }
+
+    /// <summary>Static CT için HTTP istemci ayarı. Belge gzip ve identity kabul edilmesini ister.</summary>
+    public static void ConfigureStaticCtClient(HttpClient client, string userAgent)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+        client.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
+        client.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("identity"));
+    }
+
+    /// <summary>Static CT bağlantıları: yalnızca gzip açılır, yönlendirme izlenmez, bağlantı sayısı eşzamanlılıkla sınırlı.</summary>
+    public static SocketsHttpHandler CreateStaticCtHandler(int maxConcurrency) => new()
+    {
+        AutomaticDecompression = DecompressionMethods.GZip,
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        MaxConnectionsPerServer = maxConcurrency,
+        ConnectTimeout = TimeSpan.FromSeconds(30),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+    };
 
     private static T Bind<T>(IConfiguration configuration, string section)
         where T : new()

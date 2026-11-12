@@ -2,6 +2,7 @@ using Fraud.Collectors;
 using Fraud.Collectors.Collection;
 using Fraud.Collectors.OfficialActions;
 using Fraud.Collectors.Quality;
+using Fraud.Collectors.StaticCt;
 using Fraud.Domain.Collection;
 using Fraud.Infrastructure;
 using Fraud.Infrastructure.Persistence;
@@ -16,18 +17,28 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- collect-wayback [--force true]
 //   dotnet run --project src/Fraud.Collectors -- worker
 //   dotnet run --project src/Fraud.Collectors -- quality-report
+//   dotnet run --project src/Fraud.Collectors -- ct-follow
+//   dotnet run --project src/Fraud.Collectors -- ct-sample --tiles 3 [--log <ad>] [--max-requests 5] [--verify-root true]
 // Bağlantı metni: ConnectionStrings__FraudDb ortam değişkeni veya user-secrets.
 // Çıkış kodu: 0 = temiz, 2 = reddedilen/çakışan satır veya hatalı toplama var, 1 = hata, 64 = hatalı kullanım.
 
 const string Usage =
     "Kullanım: Fraud.Collectors <import-official-actions [--file <yol>] | collect-crtsh [--force true] | " +
-    "collect-wayback [--force true] | worker | quality-report>";
+    "collect-wayback [--force true] | worker | quality-report | ct-follow | " +
+    "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true]>";
 
 var command = args.Length > 0 ? args[0] : string.Empty;
-if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"))
+if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"
+    or "ct-follow" or "ct-sample"))
 {
     await Console.Error.WriteLineAsync(Usage).ConfigureAwait(false);
     return 64;
+}
+
+if (command == "ct-sample")
+{
+    // Veritabanı gerekmez: Hiçbir şey yazılmaz, yalnızca sayılar basılır.
+    return await CtSampleCommand.RunAsync(args.Skip(1).ToArray()).ConfigureAwait(false);
 }
 
 // appsettings.json programın yanından okunur; CSV yolu ise çalıştırılan klasöre göre çözülür.
@@ -56,6 +67,10 @@ if (command == "worker")
 {
     builder.Services.AddHostedService<CollectionWorker>();
 }
+else if (command == "ct-follow")
+{
+    builder.Services.AddHostedService<CtFollowWorker>();
+}
 
 using var host = builder.Build();
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Fraud.Collectors");
@@ -76,6 +91,7 @@ Console.CancelKeyPress += (_, e) =>
 switch (command)
 {
     case "worker":
+    case "ct-follow":
         await host.RunAsync().ConfigureAwait(false);
         return 0;
 

@@ -5,6 +5,9 @@ public enum CollectionSource
 {
     CrtSh = 1,
     WaybackCdx = 2,
+
+    /// <summary>Static CT logu (c2sp.org/static-ct-api). Alan adına değil, logdaki bir indeks aralığına bağlıdır.</summary>
+    StaticCt = 3,
 }
 
 /// <summary>
@@ -55,4 +58,10 @@ public enum CollectionErrorKind
 
     /// <summary>Kodda beklenmeyen bir istisna.</summary>
     Unexpected = 9,
+
+    /// <summary>
+    /// Kriptografik doğrulama tutmadı: checkpoint imzası geçersiz, Merkle kökü uyuşmuyor,
+    /// log geriye gitti ya da iki checkpoint birbiriyle tutarsız. Veri saklanmaz.
+    /// </summary>
+    VerificationFailed = 10,
 }

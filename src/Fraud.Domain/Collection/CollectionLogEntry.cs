@@ -110,4 +110,36 @@ public sealed class CollectionLogEntry
 
     /// <summary>Sayfa sınırına takıldığı için sonuç eksik kaldı mı.</summary>
     public bool Truncated { get; private set; }
+
+    /// <summary>Sertifika logu işlerinde logun yapılandırmadaki adı (ör. <c>sycamore2026h2</c>). Diğer işlerde boş.</summary>
+    public string? CtLogName { get; private set; }
+
+    /// <summary>Logdaki aralığın ilk indeksi (dahil). Aralığa bağlı olmayan işlerde boş.</summary>
+    public long? RangeStart { get; private set; }
+
+    /// <summary>Logdaki aralığın son indeksi (hariç). <c>RangeEnd - RangeStart</c> aralıktaki kayıt sayısıdır.</summary>
+    public long? RangeEnd { get; private set; }
+
+    /// <summary>
+    /// Kaydı bir sertifika logunun indeks aralığına bağlar. Aralık bilinmiyorsa (ör. checkpoint okunamadı)
+    /// <paramref name="start"/> ve <paramref name="end"/> boş bırakılır.
+    /// </summary>
+    public CollectionLogEntry ForCtRange(string ctLogName, long? start, long? end)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ctLogName);
+        if (start.HasValue != end.HasValue)
+        {
+            throw new ArgumentException("Aralığın iki ucu birlikte verilir.", nameof(end));
+        }
+
+        if (start is { } s && end is { } e && (s < 0 || e < s))
+        {
+            throw new ArgumentOutOfRangeException(nameof(end), "Aralık geçersiz.");
+        }
+
+        CtLogName = ctLogName;
+        RangeStart = start;
+        RangeEnd = end;
+        return this;
+    }
 }

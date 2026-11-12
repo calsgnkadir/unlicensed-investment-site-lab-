@@ -1,4 +1,5 @@
 using Fraud.Domain.Archives;
+using Fraud.Domain.CertificateTransparency;
 using Fraud.Domain.Certificates;
 using Fraud.Domain.Collection;
 using Fraud.Domain.DomainNames;
@@ -20,6 +21,10 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
     public DbSet<CertificateDomain> CertificateDomains => Set<CertificateDomain>();
 
     public DbSet<ArchiveSnapshot> ArchiveSnapshots => Set<ArchiveSnapshot>();
+
+    public DbSet<CtCandidate> CtCandidates => Set<CtCandidate>();
+
+    public DbSet<CtLogState> CtLogStates => Set<CtLogState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -76,6 +81,7 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
         ConfigureCollectionLog(modelBuilder);
         ConfigureCertificates(modelBuilder);
         ConfigureArchiveSnapshots(modelBuilder);
+        ConfigureCertificateTransparency(modelBuilder);
     }
 
     private static void ConfigureCollectionLog(ModelBuilder modelBuilder)
@@ -96,6 +102,11 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
                     "attempts >= 0 AND item_count >= 0 AND skipped_item_count >= 0 AND new_item_count >= 0");
                 t.HasCheckConstraint("ck_collection_log_times", "finished_at >= started_at");
                 t.HasCheckConstraint("ck_collection_log_location", "length(btrim(measurement_location)) > 0");
+                // Log aralığı: iki uç birlikte verilir, aralık ters olamaz.
+                t.HasCheckConstraint("ck_collection_log_range",
+                    "(range_start IS NULL AND range_end IS NULL) OR " +
+                    "(range_start IS NOT NULL AND range_end IS NOT NULL AND range_start >= 0 AND range_end >= range_start)");
+                t.HasCheckConstraint("ck_collection_log_ct_range_has_log", "range_start IS NULL OR ct_log_name IS NOT NULL");
             });
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
@@ -112,6 +123,9 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
             e.Property(x => x.SkippedItemCount).HasColumnName("skipped_item_count").IsRequired();
             e.Property(x => x.NewItemCount).HasColumnName("new_item_count").IsRequired();
             e.Property(x => x.Truncated).HasColumnName("truncated").IsRequired();
+            e.Property(x => x.CtLogName).HasColumnName("ct_log_name").HasMaxLength(64);
+            e.Property(x => x.RangeStart).HasColumnName("range_start");
+            e.Property(x => x.RangeEnd).HasColumnName("range_end");
 
             e.HasOne(x => x.Domain)
                 .WithMany()
@@ -121,6 +135,10 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
 
             // Önbellek sorgusu: "Bu kaynak bu alan adını en son ne zaman başarıyla sordu?"
             e.HasIndex(x => new { x.Source, x.DomainId, x.FinishedAt }).HasDatabaseName("ix_collection_log_source_domain_finished");
+            // Kapsama sorgusu: "Bu logda hangi aralıklar hata verdi?"
+            e.HasIndex(x => new { x.CtLogName, x.RangeStart })
+                .HasFilter("ct_log_name IS NOT NULL")
+                .HasDatabaseName("ix_collection_log_ct_log_range");
         });
     }
 
@@ -205,6 +223,64 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
             // Aynı CDX satırı aynı alan adı için iki kez kaydedilmez.
             e.HasIndex(x => new { x.DomainId, x.CaptureKey }).IsUnique().HasDatabaseName("ux_archive_snapshots_domain_capture");
             e.HasIndex(x => new { x.DomainId, x.CapturedAt }).HasDatabaseName("ix_archive_snapshots_domain_captured_at");
+        });
+    }
+
+    private static void ConfigureCertificateTransparency(ModelBuilder modelBuilder)
+    {
+        // Bu tablo SPK/USOM listesinde olmayan adlar içerir (Kural 4). API'ye, rapora ve loglara yalnızca sayısı çıkar.
+        modelBuilder.Entity<CtCandidate>(e =>
+        {
+            e.ToTable("ct_candidates", t =>
+            {
+                t.HasCheckConstraint("ck_ct_candidates_issuer_no_email", "position('@' in issuer) = 0");
+                t.HasCheckConstraint("ck_ct_candidates_index", "entry_index >= 0");
+                t.HasCheckConstraint("ck_ct_candidates_names", "cardinality(san_names) BETWEEN 1 AND 1000");
+                t.HasCheckConstraint("ck_ct_candidates_terms", "cardinality(matched_terms) >= 1");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.LogName).HasColumnName("log_name").HasMaxLength(64).IsRequired();
+            e.Property(x => x.EntryIndex).HasColumnName("entry_index").IsRequired();
+            e.Property(x => x.EntryType).HasColumnName("entry_type").HasConversion<string>().HasMaxLength(16).IsRequired();
+            e.Property(x => x.LoggedAt).HasColumnName("logged_at").IsRequired();
+            e.Property(x => x.NotBefore).HasColumnName("not_before");
+            e.Property(x => x.NotAfter).HasColumnName("not_after");
+            e.Property(x => x.Issuer).HasColumnName("issuer").HasMaxLength(1024).IsRequired();
+            e.Property(x => x.SanNames).HasColumnName("san_names").HasColumnType("text[]").IsRequired();
+            e.Property(x => x.MatchedTerms).HasColumnName("matched_terms").HasColumnType("text[]").IsRequired();
+            e.Property(x => x.ObservedAt).HasColumnName("observed_at").IsRequired();
+
+            // Aynı log kaydı iki kez okunursa yeni satır açılmaz.
+            e.HasIndex(x => new { x.LogName, x.EntryIndex }).IsUnique().HasDatabaseName("ux_ct_candidates_log_index");
+            e.HasIndex(x => x.NotBefore).HasDatabaseName("ix_ct_candidates_not_before");
+        });
+
+        modelBuilder.Entity<CtLogState>(e =>
+        {
+            e.ToTable("ct_log_state", t =>
+            {
+                t.HasCheckConstraint("ck_ct_log_state_next_index", "next_index >= 0 AND next_index % 256 = 0");
+                t.HasCheckConstraint("ck_ct_log_state_frontier", "frontier IS NULL OR length(frontier) % 32 = 0");
+                t.HasCheckConstraint("ck_ct_log_state_root", "length(pending_checkpoint_root) = 32");
+                t.HasCheckConstraint("ck_ct_log_state_sizes", "pending_checkpoint_size <= latest_checkpoint_size");
+                t.HasCheckConstraint("ck_ct_log_state_counts",
+                    "entries_processed >= 0 AND entries_skipped >= 0 AND candidates_stored >= 0 AND consecutive_failures >= 0");
+            });
+            e.HasKey(x => x.LogName).HasName("pk_ct_log_state");
+            e.Property(x => x.LogName).HasColumnName("log_name").HasMaxLength(64);
+            e.Property(x => x.NextIndex).HasColumnName("next_index").IsRequired();
+            e.Property(x => x.Frontier).HasColumnName("frontier");
+            e.Property(x => x.PendingCheckpointSize).HasColumnName("pending_checkpoint_size").IsRequired();
+            e.Property(x => x.PendingCheckpointRoot).HasColumnName("pending_checkpoint_root").IsRequired();
+            e.Property(x => x.PendingCheckpointTimestamp).HasColumnName("pending_checkpoint_timestamp").IsRequired();
+            e.Property(x => x.LatestCheckpointSize).HasColumnName("latest_checkpoint_size").IsRequired();
+            e.Property(x => x.EntriesProcessed).HasColumnName("entries_processed").IsRequired();
+            e.Property(x => x.EntriesSkipped).HasColumnName("entries_skipped").IsRequired();
+            e.Property(x => x.CandidatesStored).HasColumnName("candidates_stored").IsRequired();
+            e.Property(x => x.ConsecutiveFailures).HasColumnName("consecutive_failures").IsRequired();
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").IsRequired();
+            e.Ignore(x => x.Coverage);
         });
     }
 }

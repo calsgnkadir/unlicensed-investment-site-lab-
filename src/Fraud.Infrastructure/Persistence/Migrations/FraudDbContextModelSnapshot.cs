@@ -98,6 +98,153 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Fraud.Domain.CertificateTransparency.CtCandidate", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("EntryIndex")
+                        .HasColumnType("bigint")
+                        .HasColumnName("entry_index");
+
+                    b.Property<string>("EntryType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("entry_type");
+
+                    b.Property<string>("Issuer")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("issuer");
+
+                    b.Property<string>("LogName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("log_name");
+
+                    b.Property<DateTimeOffset>("LoggedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("logged_at");
+
+                    b.PrimitiveCollection<string[]>("MatchedTerms")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("matched_terms");
+
+                    b.Property<DateTimeOffset?>("NotAfter")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("not_after");
+
+                    b.Property<DateTimeOffset?>("NotBefore")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("not_before");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("observed_at");
+
+                    b.PrimitiveCollection<string[]>("SanNames")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("san_names");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NotBefore")
+                        .HasDatabaseName("ix_ct_candidates_not_before");
+
+                    b.HasIndex("LogName", "EntryIndex")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ct_candidates_log_index");
+
+                    b.ToTable("ct_candidates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_ct_candidates_index", "entry_index >= 0");
+
+                            t.HasCheckConstraint("ck_ct_candidates_issuer_no_email", "position('@' in issuer) = 0");
+
+                            t.HasCheckConstraint("ck_ct_candidates_names", "cardinality(san_names) BETWEEN 1 AND 1000");
+
+                            t.HasCheckConstraint("ck_ct_candidates_terms", "cardinality(matched_terms) >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("Fraud.Domain.CertificateTransparency.CtLogState", b =>
+                {
+                    b.Property<string>("LogName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("log_name");
+
+                    b.Property<long>("CandidatesStored")
+                        .HasColumnType("bigint")
+                        .HasColumnName("candidates_stored");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutive_failures");
+
+                    b.Property<long>("EntriesProcessed")
+                        .HasColumnType("bigint")
+                        .HasColumnName("entries_processed");
+
+                    b.Property<long>("EntriesSkipped")
+                        .HasColumnType("bigint")
+                        .HasColumnName("entries_skipped");
+
+                    b.Property<byte[]>("Frontier")
+                        .HasColumnType("bytea")
+                        .HasColumnName("frontier");
+
+                    b.Property<long>("LatestCheckpointSize")
+                        .HasColumnType("bigint")
+                        .HasColumnName("latest_checkpoint_size");
+
+                    b.Property<long>("NextIndex")
+                        .HasColumnType("bigint")
+                        .HasColumnName("next_index");
+
+                    b.Property<byte[]>("PendingCheckpointRoot")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("pending_checkpoint_root");
+
+                    b.Property<long>("PendingCheckpointSize")
+                        .HasColumnType("bigint")
+                        .HasColumnName("pending_checkpoint_size");
+
+                    b.Property<DateTimeOffset>("PendingCheckpointTimestamp")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pending_checkpoint_timestamp");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("LogName")
+                        .HasName("pk_ct_log_state");
+
+                    b.ToTable("ct_log_state", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_ct_log_state_counts", "entries_processed >= 0 AND entries_skipped >= 0 AND candidates_stored >= 0 AND consecutive_failures >= 0");
+
+                            t.HasCheckConstraint("ck_ct_log_state_frontier", "frontier IS NULL OR length(frontier) % 32 = 0");
+
+                            t.HasCheckConstraint("ck_ct_log_state_next_index", "next_index >= 0 AND next_index % 256 = 0");
+
+                            t.HasCheckConstraint("ck_ct_log_state_root", "length(pending_checkpoint_root) = 32");
+
+                            t.HasCheckConstraint("ck_ct_log_state_sizes", "pending_checkpoint_size <= latest_checkpoint_size");
+                        });
+                });
+
             modelBuilder.Entity("Fraud.Domain.Certificates.Certificate", b =>
                 {
                     b.Property<long>("Id")
@@ -210,6 +357,11 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("attempts");
 
+                    b.Property<string>("CtLogName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ct_log_name");
+
                     b.Property<long?>("DomainId")
                         .HasColumnType("bigint")
                         .HasColumnName("domain_id");
@@ -248,6 +400,14 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("outcome");
 
+                    b.Property<long?>("RangeEnd")
+                        .HasColumnType("bigint")
+                        .HasColumnName("range_end");
+
+                    b.Property<long?>("RangeStart")
+                        .HasColumnType("bigint")
+                        .HasColumnName("range_start");
+
                     b.Property<int>("SkippedItemCount")
                         .HasColumnType("integer")
                         .HasColumnName("skipped_item_count");
@@ -270,6 +430,10 @@ namespace Fraud.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DomainId");
 
+                    b.HasIndex("CtLogName", "RangeStart")
+                        .HasDatabaseName("ix_collection_log_ct_log_range")
+                        .HasFilter("ct_log_name IS NOT NULL");
+
                     b.HasIndex("Source", "DomainId", "FinishedAt")
                         .HasDatabaseName("ix_collection_log_source_domain_finished");
 
@@ -277,11 +441,15 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_collection_log_counts", "attempts >= 0 AND item_count >= 0 AND skipped_item_count >= 0 AND new_item_count >= 0");
 
+                            t.HasCheckConstraint("ck_collection_log_ct_range_has_log", "range_start IS NULL OR ct_log_name IS NOT NULL");
+
                             t.HasCheckConstraint("ck_collection_log_empty", "outcome <> 'Empty' OR (item_count = 0 AND skipped_item_count = 0 AND http_status IS NOT NULL AND http_status BETWEEN 200 AND 299)");
 
                             t.HasCheckConstraint("ck_collection_log_error_kind", "(outcome = 'Error') = (error_kind <> 'None')");
 
                             t.HasCheckConstraint("ck_collection_log_location", "length(btrim(measurement_location)) > 0");
+
+                            t.HasCheckConstraint("ck_collection_log_range", "(range_start IS NULL AND range_end IS NULL) OR (range_start IS NOT NULL AND range_end IS NOT NULL AND range_start >= 0 AND range_end >= range_start)");
 
                             t.HasCheckConstraint("ck_collection_log_success", "outcome <> 'Success' OR item_count > 0");
 
