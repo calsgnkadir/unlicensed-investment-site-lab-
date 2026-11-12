@@ -1,5 +1,7 @@
 using Fraud.Domain.DomainNames;
+using Fraud.Domain.Fetching;
 using Fraud.Infrastructure.DomainNames;
+using Fraud.Infrastructure.Fetching;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -25,6 +27,23 @@ public static class ServiceCollectionExtensions
         services.AddDbContext<FraudDbContext>(o => o.UseNpgsql(connectionString));
         services.AddSingleton<IDomainNameNormalizer, PublicSuffixDomainNormalizer>();
         services.AddSingleton(TimeProvider.System);
+        return services;
+    }
+
+    /// <summary>
+    /// Güvenli sayfa çekiciyi kaydeder. Hafta 2'de hiçbir iş bunu çağırmaz; arşiv içeriği sonraki
+    /// haftalarda, kural belgelendikten sonra çekilecek.
+    /// </summary>
+    public static IServiceCollection AddSafeFetcher(this IServiceCollection services, SafeFetcherOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        services.AddSingleton(options);
+        services.AddSingleton<IHostAddressResolver, SystemHostAddressResolver>();
+        services.AddSingleton<ISafeFetcher>(sp => new SafeFetcher(
+            SafeFetcher.CreateTransport(sp.GetRequiredService<IHostAddressResolver>()),
+            options,
+            sp.GetRequiredService<TimeProvider>()));
         return services;
     }
 }

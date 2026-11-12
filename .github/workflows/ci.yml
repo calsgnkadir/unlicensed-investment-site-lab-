@@ -55,3 +55,6 @@ jobs:
 
       - name: Build API image
         run: docker build --file src/Fraud.Api/Dockerfile --tag fraud-lab-api:ci .
+
+      - name: Build collectors image
+        run: docker build --file src/Fraud.Collectors/Dockerfile --tag fraud-lab-collectors:ci .

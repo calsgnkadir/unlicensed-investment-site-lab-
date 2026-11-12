@@ -1,4 +1,8 @@
+using Fraud.Collectors;
+using Fraud.Collectors.Collection;
 using Fraud.Collectors.OfficialActions;
+using Fraud.Collectors.Quality;
+using Fraud.Domain.Collection;
 using Fraud.Infrastructure;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
@@ -8,12 +12,21 @@ using Microsoft.Extensions.Logging;
 
 // Kullanım:
 //   dotnet run --project src/Fraud.Collectors -- import-official-actions [--file <yol>]
+//   dotnet run --project src/Fraud.Collectors -- collect-crtsh [--force true]
+//   dotnet run --project src/Fraud.Collectors -- collect-wayback [--force true]
+//   dotnet run --project src/Fraud.Collectors -- worker
+//   dotnet run --project src/Fraud.Collectors -- quality-report
 // Bağlantı metni: ConnectionStrings__FraudDb ortam değişkeni veya user-secrets.
-// Çıkış kodu: 0 = temiz, 2 = reddedilen veya çakışan satır var, 1 = hata, 64 = hatalı kullanım.
+// Çıkış kodu: 0 = temiz, 2 = reddedilen/çakışan satır veya hatalı toplama var, 1 = hata, 64 = hatalı kullanım.
 
-if (args.Length == 0 || args[0] != "import-official-actions")
+const string Usage =
+    "Kullanım: Fraud.Collectors <import-official-actions [--file <yol>] | collect-crtsh [--force true] | " +
+    "collect-wayback [--force true] | worker | quality-report>";
+
+var command = args.Length > 0 ? args[0] : string.Empty;
+if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"))
 {
-    await Console.Error.WriteLineAsync("Kullanım: Fraud.Collectors import-official-actions [--file <yol>]").ConfigureAwait(false);
+    await Console.Error.WriteLineAsync(Usage).ConfigureAwait(false);
     return 64;
 }
 
@@ -25,51 +38,97 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 });
 builder.Configuration.AddUserSecrets(typeof(OfficialActionImporter).Assembly, optional: true);
 builder.Services.AddFraudInfrastructure(builder.Configuration);
+builder.Services.AddCollectors(builder.Configuration);
 
-var options = new OfficialActionImportOptions();
-builder.Configuration.GetSection(OfficialActionImportOptions.SectionName).Bind(options);
+var importOptions = new OfficialActionImportOptions();
+builder.Configuration.GetSection(OfficialActionImportOptions.SectionName).Bind(importOptions);
 var fileArgument = builder.Configuration["file"];
 if (!string.IsNullOrWhiteSpace(fileArgument))
 {
-    options.FilePath = fileArgument;
+    importOptions.FilePath = fileArgument;
 }
 
-builder.Services.AddSingleton(options);
+builder.Services.AddSingleton(importOptions);
 builder.Services.AddScoped<OfficialActionCsvParser>();
 builder.Services.AddScoped<OfficialActionImporter>();
 
+if (command == "worker")
+{
+    builder.Services.AddHostedService<CollectionWorker>();
+}
+
 using var host = builder.Build();
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Fraud.Collectors");
-
-var path = Path.GetFullPath(options.FilePath);
-if (!File.Exists(path))
-{
-    ImportLog.FileNotFound(logger, options.FilePath);
-    return 1;
-}
 
 if (builder.Configuration.GetValue("Database:MigrateOnStartup", false))
 {
     await DatabaseMigrator.MigrateAsync(host.Services).ConfigureAwait(false);
 }
 
-await using var scope = host.Services.CreateAsyncScope();
-var importer = scope.ServiceProvider.GetRequiredService<OfficialActionImporter>();
-
-using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
-var report = await importer.ImportAsync(reader).ConfigureAwait(false);
-
-// Log yalnızca sayı, satır numarası ve neden içerir; alan adı yazılmaz.
-ImportLog.Finished(logger, report.ValidRows, report.Inserted, report.AlreadyPresent, report.NewDomains, report.Conflicts.Count, report.Rejections.Count);
-
-foreach (var rejection in report.Rejections)
+// Ctrl+C ile tek seferlik komutlar da düzgün durur; yarım kalan iş collection_log'a "Cancelled" olarak yazılır.
+using var stop = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
 {
-    ImportLog.Rejected(logger, rejection.RowNumber, rejection.Reason, rejection.Detail);
+    e.Cancel = true;
+    stop.Cancel();
+};
+
+switch (command)
+{
+    case "worker":
+        await host.RunAsync().ConfigureAwait(false);
+        return 0;
+
+    case "collect-crtsh":
+    case "collect-wayback":
+    {
+        var source = command == "collect-crtsh" ? CollectionSource.CrtSh : CollectionSource.WaybackCdx;
+        var force = builder.Configuration.GetValue("force", false);
+        await using var scope = host.Services.CreateAsyncScope();
+        var runner = scope.ServiceProvider.GetRequiredService<CollectionRunner>();
+        var summary = await runner.RunAsync(source, force, stop.Token).ConfigureAwait(false);
+        return summary.Failed == 0 && !summary.Cancelled ? 0 : 2;
+    }
+
+    case "quality-report":
+    {
+        await using var scope = host.Services.CreateAsyncScope();
+        var report = await scope.ServiceProvider.GetRequiredService<QualityReportBuilder>().BuildAsync(stop.Token).ConfigureAwait(false);
+        await Console.Out.WriteAsync(report.ToText()).ConfigureAwait(false);
+        return 0;
+    }
+
+    default:
+        return await ImportOfficialActionsAsync(host.Services, importOptions, logger).ConfigureAwait(false);
 }
 
-foreach (var conflict in report.Conflicts)
+static async Task<int> ImportOfficialActionsAsync(IServiceProvider services, OfficialActionImportOptions options, ILogger logger)
 {
-    ImportLog.Conflict(logger, conflict.RowNumber, conflict.Detail);
-}
+    var path = Path.GetFullPath(options.FilePath);
+    if (!File.Exists(path))
+    {
+        ImportLog.FileNotFound(logger, options.FilePath);
+        return 1;
+    }
 
-return report.IsClean ? 0 : 2;
+    await using var scope = services.CreateAsyncScope();
+    var importer = scope.ServiceProvider.GetRequiredService<OfficialActionImporter>();
+
+    using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
+    var report = await importer.ImportAsync(reader).ConfigureAwait(false);
+
+    // Log yalnızca sayı, satır numarası ve neden içerir; alan adı yazılmaz.
+    ImportLog.Finished(logger, report.ValidRows, report.Inserted, report.AlreadyPresent, report.NewDomains, report.Conflicts.Count, report.Rejections.Count);
+
+    foreach (var rejection in report.Rejections)
+    {
+        ImportLog.Rejected(logger, rejection.RowNumber, rejection.Reason, rejection.Detail);
+    }
+
+    foreach (var conflict in report.Conflicts)
+    {
+        ImportLog.Conflict(logger, conflict.RowNumber, conflict.Detail);
+    }
+
+    return report.IsClean ? 0 : 2;
+}

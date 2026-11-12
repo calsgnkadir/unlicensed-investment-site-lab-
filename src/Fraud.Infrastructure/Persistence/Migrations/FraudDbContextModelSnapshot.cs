@@ -22,6 +22,273 @@ namespace Fraud.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Fraud.Domain.Archives.ArchiveSnapshot", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CaptureKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("capture_key")
+                        .IsFixedLength();
+
+                    b.Property<DateTimeOffset>("CapturedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("captured_at");
+
+                    b.Property<string>("Digest")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("digest");
+
+                    b.Property<long>("DomainId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("domain_id");
+
+                    b.Property<string>("MimeType")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("mime_type");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("observed_at");
+
+                    b.Property<string>("OriginalUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("original_url");
+
+                    b.Property<bool>("QueryRemoved")
+                        .HasColumnType("boolean")
+                        .HasColumnName("query_removed");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_code");
+
+                    b.Property<string>("Timestamp")
+                        .IsRequired()
+                        .HasMaxLength(14)
+                        .HasColumnType("character(14)")
+                        .HasColumnName("cdx_timestamp")
+                        .IsFixedLength();
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DomainId", "CaptureKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_archive_snapshots_domain_capture");
+
+                    b.HasIndex("DomainId", "CapturedAt")
+                        .HasDatabaseName("ix_archive_snapshots_domain_captured_at");
+
+                    b.ToTable("archive_snapshots", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_archive_snapshots_no_query", "position('?' in original_url) = 0");
+
+                            t.HasCheckConstraint("ck_archive_snapshots_timestamp", "cdx_timestamp ~ '^[0-9]{14}$'");
+                        });
+                });
+
+            modelBuilder.Entity("Fraud.Domain.Certificates.Certificate", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CommonName")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("common_name");
+
+                    b.Property<long>("CrtShId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("crtsh_id");
+
+                    b.Property<bool?>("IsPrecertificate")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_precertificate");
+
+                    b.Property<int?>("IssuerCaId")
+                        .HasColumnType("integer")
+                        .HasColumnName("issuer_ca_id");
+
+                    b.Property<string>("IssuerName")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("issuer_name");
+
+                    b.Property<DateTimeOffset?>("LoggedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("logged_at");
+
+                    b.PrimitiveCollection<string[]>("Names")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("names");
+
+                    b.Property<DateTimeOffset>("NotAfter")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("not_after");
+
+                    b.Property<DateTimeOffset>("NotBefore")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("not_before");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("observed_at");
+
+                    b.Property<string>("SerialNumber")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("serial_number");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CrtShId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_certificates_crtsh_id");
+
+                    b.HasIndex("NotBefore")
+                        .HasDatabaseName("ix_certificates_not_before");
+
+                    b.ToTable("certificates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_certificates_issuer_no_email", "position('@' in issuer_name) = 0");
+
+                            t.HasCheckConstraint("ck_certificates_validity", "not_after >= not_before");
+                        });
+                });
+
+            modelBuilder.Entity("Fraud.Domain.Certificates.CertificateDomain", b =>
+                {
+                    b.Property<long>("CertificateId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("certificate_id");
+
+                    b.Property<long>("DomainId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("domain_id");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("observed_at");
+
+                    b.HasKey("CertificateId", "DomainId")
+                        .HasName("pk_certificate_domains");
+
+                    b.HasIndex("DomainId")
+                        .HasDatabaseName("ix_certificate_domains_domain_id");
+
+                    b.ToTable("certificate_domains", (string)null);
+                });
+
+            modelBuilder.Entity("Fraud.Domain.Collection.CollectionLogEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<long?>("DomainId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("domain_id");
+
+                    b.Property<string>("ErrorKind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("error_kind");
+
+                    b.Property<DateTimeOffset>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<int?>("HttpStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("http_status");
+
+                    b.Property<int>("ItemCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("item_count");
+
+                    b.Property<string>("MeasurementLocation")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("measurement_location");
+
+                    b.Property<int>("NewItemCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("new_item_count");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("outcome");
+
+                    b.Property<int>("SkippedItemCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("skipped_item_count");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("source");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<bool>("Truncated")
+                        .HasColumnType("boolean")
+                        .HasColumnName("truncated");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DomainId");
+
+                    b.HasIndex("Source", "DomainId", "FinishedAt")
+                        .HasDatabaseName("ix_collection_log_source_domain_finished");
+
+                    b.ToTable("collection_log", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_collection_log_counts", "attempts >= 0 AND item_count >= 0 AND skipped_item_count >= 0 AND new_item_count >= 0");
+
+                            t.HasCheckConstraint("ck_collection_log_empty", "outcome <> 'Empty' OR (item_count = 0 AND skipped_item_count = 0 AND http_status IS NOT NULL AND http_status BETWEEN 200 AND 299)");
+
+                            t.HasCheckConstraint("ck_collection_log_error_kind", "(outcome = 'Error') = (error_kind <> 'None')");
+
+                            t.HasCheckConstraint("ck_collection_log_location", "length(btrim(measurement_location)) > 0");
+
+                            t.HasCheckConstraint("ck_collection_log_success", "outcome <> 'Success' OR item_count > 0");
+
+                            t.HasCheckConstraint("ck_collection_log_times", "finished_at >= started_at");
+                        });
+                });
+
             modelBuilder.Entity("Fraud.Domain.DomainNames.DomainName", b =>
                 {
                     b.Property<long>("Id")
@@ -139,6 +406,50 @@ namespace Fraud.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_official_actions_source_url", "source_url ~ '^https?://'");
                         });
+                });
+
+            modelBuilder.Entity("Fraud.Domain.Archives.ArchiveSnapshot", b =>
+                {
+                    b.HasOne("Fraud.Domain.DomainNames.DomainName", "Domain")
+                        .WithMany()
+                        .HasForeignKey("DomainId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_archive_snapshots_domains");
+
+                    b.Navigation("Domain");
+                });
+
+            modelBuilder.Entity("Fraud.Domain.Certificates.CertificateDomain", b =>
+                {
+                    b.HasOne("Fraud.Domain.Certificates.Certificate", "Certificate")
+                        .WithMany()
+                        .HasForeignKey("CertificateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_certificate_domains_certificates");
+
+                    b.HasOne("Fraud.Domain.DomainNames.DomainName", "Domain")
+                        .WithMany()
+                        .HasForeignKey("DomainId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_certificate_domains_domains");
+
+                    b.Navigation("Certificate");
+
+                    b.Navigation("Domain");
+                });
+
+            modelBuilder.Entity("Fraud.Domain.Collection.CollectionLogEntry", b =>
+                {
+                    b.HasOne("Fraud.Domain.DomainNames.DomainName", "Domain")
+                        .WithMany()
+                        .HasForeignKey("DomainId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_collection_log_domains");
+
+                    b.Navigation("Domain");
                 });
 
             modelBuilder.Entity("Fraud.Domain.OfficialActions.OfficialAction", b =>

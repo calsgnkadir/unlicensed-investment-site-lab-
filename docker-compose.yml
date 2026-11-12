@@ -54,5 +54,31 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # crt.sh ve Wayback toplayıcısı. Dış kaynaklara istek attığı için varsayılan olarak BAŞLAMAZ;
+  # yalnızca açıkça istenince çalışır: docker compose --profile collectors up -d collectors
+  collectors:
+    profiles: ["collectors"]
+    build:
+      context: .
+      dockerfile: src/Fraud.Collectors/Dockerfile
+    image: fraud-lab-collectors:dev
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__FraudDb: "Host=db;Port=5432;Database=fraud_lab;Username=fraud_lab;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
+      Database__MigrateOnStartup: "true"
+      Collection__MeasurementLocation: ${MEASUREMENT_LOCATION:-lab-local}
+    command: ["worker"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   db_data:
