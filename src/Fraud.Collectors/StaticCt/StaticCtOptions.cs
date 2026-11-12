@@ -41,6 +41,12 @@ public sealed class StaticCtOptions : SourceHttpOptions
     /// <summary>Aynı aralık üst üste bu kadar turda işlenemezse atlanır ve collection_log'a "atlandı" yazılır.</summary>
     public int MaxRangeAttempts { get; set; } = 5;
 
+    /// <summary>
+    /// Sağlık dosyası (mutlak yol). Etkin her log en az bir turu hatasız bitirdikçe bu dosya yeniden yazılır;
+    /// konteyner sağlık kontrolü dosyanın yaşına bakar. Boşsa yazılmaz. İçinde yalnızca UTC zaman olur.
+    /// </summary>
+    public string? HeartbeatFile { get; set; }
+
     public IEnumerable<CtLogOptions> EnabledLogs => Logs.Where(l => l.Enabled);
 
     public void Validate()
@@ -70,13 +76,25 @@ public sealed class StaticCtOptions : SourceHttpOptions
             throw new InvalidOperationException("StaticCt:PollInterval en az 1 sn olmalı.");
         }
 
+        if (!string.IsNullOrWhiteSpace(HeartbeatFile) && !Path.IsPathFullyQualified(HeartbeatFile))
+        {
+            throw new InvalidOperationException("StaticCt:HeartbeatFile mutlak bir yol olmalı.");
+        }
+
         var names = new HashSet<string>(StringComparer.Ordinal);
+        var lockKeys = new HashSet<int>();
         foreach (var log in Logs)
         {
             log.Validate();
             if (!names.Add(log.Name))
             {
                 throw new InvalidOperationException("StaticCt:Logs içinde aynı ad iki kez var.");
+            }
+
+            // İki farklı adın aynı kilit anahtarına düşmesi çok düşük olasılık; olursa biri hiç çalışmazdı.
+            if (!lockKeys.Add(PostgresCtLogLockProvider.LockKey(log.Name)))
+            {
+                throw new InvalidOperationException("StaticCt:Logs içinde iki log aynı kilit anahtarına düşüyor; birinin adını değiştirin.");
             }
         }
     }

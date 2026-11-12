@@ -75,6 +75,11 @@ public static class CollectorServiceCollectionExtensions
         services.AddSingleton(sp => new StaticCtMetrics(sp.GetService<System.Diagnostics.Metrics.IMeterFactory>()));
         services.AddSingleton<IStaticCtClientFactory, StaticCtClientFactory>();
         services.AddScoped<ICtStateStore, EfCtStateStore>();
+
+        // Bağlantı metni yalnızca kilit ilk kez istendiğinde okunur; veritabanı gerektirmeyen komutlar etkilenmez.
+        services.AddSingleton<ICtLogLockProvider>(_ => new PostgresCtLogLockProvider(
+            configuration.GetConnectionString(Fraud.Infrastructure.ServiceCollectionExtensions.ConnectionStringName)
+            ?? throw new InvalidOperationException("CT log kilidi için veritabanı bağlantı metni yok.")));
         services.AddHttpClient(StaticCtClientFactory.HttpClientName)
             .ConfigureHttpClient(c => ConfigureStaticCtClient(c, userAgent))
             .ConfigurePrimaryHttpMessageHandler(() => CreateStaticCtHandler(staticCt.MaxConcurrency));

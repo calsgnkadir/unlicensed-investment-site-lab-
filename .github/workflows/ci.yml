@@ -56,5 +56,13 @@ jobs:
       - name: Build API image
         run: docker build --file src/Fraud.Api/Dockerfile --tag fraud-lab-api:ci .
 
+      # Linux kurulum paketi: compose dosyası geçerli mi, betikler shellcheck'ten geçiyor mu (çalıştırıcıda hazır gelir).
+      - name: Check Linux deploy package
+        env:
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+        run: |
+          docker compose -f deploy/linux/docker-compose.ct.yml config -q
+          shellcheck deploy/linux/*.sh
+
       - name: Build collectors image
         run: docker build --file src/Fraud.Collectors/Dockerfile --tag fraud-lab-collectors:ci .

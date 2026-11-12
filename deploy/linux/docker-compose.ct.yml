@@ -1,0 +1,145 @@
+# Canlı Static CT akışı (ct-follow) için Linux kurulumu. Yalnızca veritabanı ve izleyici çalışır; API bu makinede yok.
+#
+# Kullanım (bu klasörden): ./install.sh
+# Elle: docker compose -f docker-compose.ct.yml up -d --build
+#
+# .env bu klasörde durur (install.sh oluşturur, izni 600). Depoya girmez (.gitignore: .env).
+#
+# Açılış sırası:
+#   1. db sağlıklı olur.
+#   2. migrate şemayı bir kez günceller ve çıkar (bu kurulumda şemayı yalnızca o günceller).
+#   3. ct-follow, migrate başarıyla bitince başlar. Kendisi migration yapmaz.
+# Makine yeniden açılınca Docker, db ve ct-follow'u kendisi başlatır; migrate tekrar çalışmaz (restart: "no").
+# ct-follow veritabanı hazır olmadan başlarsa turu hata sayar, bekler ve yeniden dener.
+
+name: fraud-lab-ct
+
+x-logging: &logging
+  # Konteyner logları diskte sınırsız büyümesin: dosya başına 10 MB, en fazla 5 dosya.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-collectors: &collectors
+  build:
+    context: ../..
+    dockerfile: src/Fraud.Collectors/Dockerfile
+  image: fraud-lab-collectors:linux
+  depends_on:
+    db:
+      condition: service_healthy
+  # Yalnızca iç ağ (veritabanı) ve dışarı çıkış ağı. Hiçbir port dışarı açılmaz.
+  networks:
+    - backend
+    - egress
+  # İmajdaki hazır, yetkisiz kullanıcı (USER $APP_UID, root değil). Dockerfile'da tanımlı.
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  logging: *logging
+
+services:
+  db:
+    # Sabit sürüm. Kök docker-compose.yml ve tests/.../PostgresFixture.cs ile aynı olmalı.
+    image: postgres:17.9-alpine3.23
+    restart: unless-stopped
+    # İmajdaki postgres kullanıcısı (alpine'da uid/gid 70). Yeni adlandırılmış birim, imajdaki sahipliği aldığı için
+    # veri klasörü bu kullanıcıya aittir; giriş betiği root yetkisi istemez.
+    user: "70:70"
+    environment:
+      POSTGRES_DB: fraud_lab
+      POSTGRES_USER: fraud_lab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env dosyasında tanımlı olmalı}
+    # Port YAYIMLANMAZ. Yedek ve durum betikleri "docker compose exec" ile konteynerin içinden bağlanır.
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraud_lab -d fraud_lab"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/run/postgresql:size=1m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    shm_size: "128m"
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 256
+    stop_grace_period: 60s
+    logging: *logging
+
+  # Şemayı bir kez günceller ve çıkar.
+  migrate:
+    <<: *collectors
+    restart: "no"
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      DOTNET_EnableDiagnostics: "0"
+      ConnectionStrings__FraudDb: "Host=db;Port=5432;Database=fraud_lab;Username=fraud_lab;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
+    command: ["migrate"]
+    # Migration dışarıya istek atmaz; çıkış ağına gerek yok.
+    networks:
+      - backend
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 128
+
+  ct-follow:
+    <<: *collectors
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      DOTNET_EnableDiagnostics: "0"
+      ConnectionStrings__FraudDb: "Host=db;Port=5432;Database=fraud_lab;Username=fraud_lab;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
+      Database__MigrateOnStartup: "false"
+      Collection__MeasurementLocation: ${MEASUREMENT_LOCATION:-lab-linux}
+      # appsettings.json'daki sıraya göre: 0 = sycamore2026h2, 1 = sycamore2027h1.
+      # Bu kurulumun varsayılanı appsettings.json'dan farklıdır: 2027h1 açık, 2026h2 kapalı. Yeni 90 günlük
+      # sertifikalar 2027h1'e düşüyor; 2026h2 dilimi 17 Aralık 2026'da kapanıyor.
+      StaticCt__Logs__0__Enabled: ${CT_ENABLE_2026H2:-false}
+      StaticCt__Logs__1__Enabled: ${CT_ENABLE_2027H1:-true}
+      # İki isteğin başlangıcı arasındaki en kısa süre (log başına). 0,5 sn = en fazla 2 tile/sn; 2027h1 ~1 tile/sn üretiyor.
+      StaticCt__MinRequestInterval: ${CT_MIN_REQUEST_INTERVAL:-00:00:00.500}
+      # Etkin her log hatasız bir tur bitirdikçe yenilenir; sağlık kontrolü yaşına bakar.
+      StaticCt__HeartbeatFile: /tmp/ct-follow.heartbeat
+    command: ["ct-follow"]
+    healthcheck:
+      # Çalışma imajında curl yok. Dosya 15 dakikadan eskiyse (her log en az bir tur başaramadıysa) sağlıksız.
+      test: ["CMD-SHELL", "test -f /tmp/ct-follow.heartbeat && [ $$(( $$(date +%s) - $$(stat -c %Y /tmp/ct-follow.heartbeat) )) -lt 900 ]"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+    cpus: 1.0
+    mem_limit: 768m
+    pids_limit: 256
+    # Başlamış bir veritabanı yazması bitsin diye.
+    stop_grace_period: 45s
+
+networks:
+  # İç ağ: Dışarıya çıkışı yok. Veritabanı yalnızca burada.
+  backend:
+    internal: true
+  # ct-follow'un CT loguna gidebilmesi için çıkış ağı.
+  egress: {}
+
+volumes:
+  db_data:

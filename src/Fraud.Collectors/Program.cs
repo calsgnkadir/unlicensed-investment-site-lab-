@@ -18,18 +18,19 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- worker
 //   dotnet run --project src/Fraud.Collectors -- quality-report
 //   dotnet run --project src/Fraud.Collectors -- ct-follow
+//   dotnet run --project src/Fraud.Collectors -- migrate
 //   dotnet run --project src/Fraud.Collectors -- ct-sample --tiles 3 [--log <ad>] [--max-requests 5] [--verify-root true]
 // Bağlantı metni: ConnectionStrings__FraudDb ortam değişkeni veya user-secrets.
 // Çıkış kodu: 0 = temiz, 2 = reddedilen/çakışan satır veya hatalı toplama var, 1 = hata, 64 = hatalı kullanım.
 
 const string Usage =
     "Kullanım: Fraud.Collectors <import-official-actions [--file <yol>] | collect-crtsh [--force true] | " +
-    "collect-wayback [--force true] | worker | quality-report | ct-follow | " +
+    "collect-wayback [--force true] | worker | quality-report | ct-follow | migrate | " +
     "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true]>";
 
 var command = args.Length > 0 ? args[0] : string.Empty;
 if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"
-    or "ct-follow" or "ct-sample"))
+    or "ct-follow" or "ct-sample" or "migrate"))
 {
     await Console.Error.WriteLineAsync(Usage).ConfigureAwait(false);
     return 64;
@@ -75,9 +76,17 @@ else if (command == "ct-follow")
 using var host = builder.Build();
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Fraud.Collectors");
 
-if (builder.Configuration.GetValue("Database:MigrateOnStartup", false))
+// "migrate" ayardan bağımsız olarak şemayı günceller ve çıkar. Linux kurulumunda (deploy/linux) şemayı yalnızca
+// bu tek seferlik servis günceller; ct-follow ondan sonra başlar ve kendisi migration yapmaz.
+if (command == "migrate" || builder.Configuration.GetValue("Database:MigrateOnStartup", false))
 {
     await DatabaseMigrator.MigrateAsync(host.Services).ConfigureAwait(false);
+}
+
+if (command == "migrate")
+{
+    await Console.Out.WriteLineAsync("Migration tamam.").ConfigureAwait(false);
+    return 0;
 }
 
 // Ctrl+C ile tek seferlik komutlar da düzgün durur; yarım kalan iş collection_log'a "Cancelled" olarak yazılır.

@@ -28,7 +28,9 @@ TestResults/
 coverage*.xml
 coverage*.json
 
-# Veritabanı ve log dosyaları
+# Veritabanı ve log dosyaları. pg_dump yedekleri aday adları içerir (Kural 4).
+*.dump
+*.dump.partial
 *.db
 *.db-shm
 *.db-wal

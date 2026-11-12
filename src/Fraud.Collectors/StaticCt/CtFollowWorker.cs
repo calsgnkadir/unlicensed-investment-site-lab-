@@ -13,15 +13,30 @@ namespace Fraud.Collectors.StaticCt;
 /// yetişince <see cref="StaticCtOptions.PollInterval"/> kadar bekleyerek devam eder.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Her tur kendi DI kapsamını (yeni veritabanı bağlamı) açar. Kalınan yer veritabanında olduğu için program
-/// kapanıp açılınca aynı yerden devam edilir. Aynı log için iki süreç aynı anda çalıştırılmamalı.
+/// kapanıp açılınca aynı yerden devam edilir.
+/// </para>
+/// <para>
+/// Aynı log için iki süreç aynı anda tur yapamaz: Döngü, tur yapmadan önce o logun veritabanı kilidini
+/// (<see cref="ICtLogLockProvider"/>) almış olmalıdır. Kilit doluysa süreç bekler ve kilit boşalınca devralır.
+/// Kilit her turdan önce yeniden kontrol edilir; bağlantı koptuysa önce kilit yeniden alınır.
+/// </para>
+/// <para>
+/// Sağlık dosyası (<see cref="StaticCtOptions.HeartbeatFile"/>): Etkin her log son yazımdan bu yana en az bir turu
+/// hatasız bitirdiyse yeniden yazılır. Bir log sürekli hata alırsa veya kilidi alamazsa dosya eskir.
+/// </para>
 /// </remarks>
 public sealed class CtFollowWorker(
     IServiceScopeFactory scopeFactory,
     StaticCtOptions options,
     TimeProvider timeProvider,
-    ILogger<CtFollowWorker> logger) : BackgroundService
+    ILogger<CtFollowWorker> logger,
+    ICtLogLockProvider lockProvider) : BackgroundService
 {
+    private readonly HashSet<string> _healthySinceLastBeat = new(StringComparer.Ordinal);
+    private int _enabledCount;
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var logs = options.Logs.Select((log, i) => (log, Number: i + 1)).Where(x => x.log.Enabled).ToList();
@@ -30,6 +45,7 @@ public sealed class CtFollowWorker(
             throw new InvalidOperationException("StaticCt:Logs içinde etkin log yok.");
         }
 
+        _enabledCount = logs.Count;
         return Task.WhenAll(logs.Select(x => FollowAsync(x.log, x.Number, stoppingToken)));
     }
 
@@ -39,37 +55,112 @@ public sealed class CtFollowWorker(
     {
         // Ana iş parçacığını bırak: Loglar birbirini beklemesin.
         await Task.Yield();
-        while (!stoppingToken.IsCancellationRequested)
+        ICtLogLock? held = null;
+        var busyReported = false;
+        try
         {
-            CtBatchResult? result = null;
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var follower = StaticCtFollowerFactory.Create(scope.ServiceProvider, log, number);
-                result = await follower.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+                CtBatchResult? result = null;
+                try
+                {
+                    if (held is not null && !await held.IsHeldAsync(stoppingToken).ConfigureAwait(false))
+                    {
+                        StaticCtLog.LockLost(logger, number);
+                        var lost = held;
+                        held = null;
+                        await lost.DisposeAsync().ConfigureAwait(false);
+                    }
+
+                    if (held is null)
+                    {
+                        held = await lockProvider.TryAcquireAsync(log.Name, stoppingToken).ConfigureAwait(false);
+                        if (held is not null)
+                        {
+                            StaticCtLog.LockAcquired(logger, number);
+                        }
+                    }
+
+                    if (held is null)
+                    {
+                        if (!busyReported)
+                        {
+                            StaticCtLog.LockBusy(logger, number);
+                            busyReported = true;
+                        }
+                    }
+                    else
+                    {
+                        busyReported = false;
+                        await using var scope = scopeFactory.CreateAsyncScope();
+                        var follower = StaticCtFollowerFactory.Create(scope.ServiceProvider, log, number);
+                        result = await follower.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+                        if (result.Status != CtBatchStatus.Failed)
+                        {
+                            MarkHealthy(log.Name);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    // Mesaj veya istisna nesnesi yazılmaz: adres ya da çekilen veri içerebilir.
+                    CollectorLog.RunCrashed(logger, CollectionSource.StaticCt, ex.GetType().Name);
+                }
+
+                if (result is { HasMoreWork: true })
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await Task.Delay(options.PollInterval, timeProvider, stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        }
+        finally
+        {
+            if (held is not null)
+            {
+                await held.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Sağlık dosyasının yazılamaması izlemeyi durdurmamalı; yalnızca HResult sayısı loglanır (yol veya mesaj yazılmaz).")]
+    private void MarkHealthy(string logName)
+    {
+        if (string.IsNullOrWhiteSpace(options.HeartbeatFile))
+        {
+            return;
+        }
+
+        lock (_healthySinceLastBeat)
+        {
+            _healthySinceLastBeat.Add(logName);
+            if (_healthySinceLastBeat.Count < _enabledCount)
             {
                 return;
+            }
+
+            _healthySinceLastBeat.Clear();
+            try
+            {
+                File.WriteAllText(options.HeartbeatFile,
+                    timeProvider.GetUtcNow().ToString("O", System.Globalization.CultureInfo.InvariantCulture));
             }
             catch (Exception ex)
             {
-                // Mesaj veya istisna nesnesi yazılmaz: adres ya da çekilen veri içerebilir.
-                CollectorLog.RunCrashed(logger, CollectionSource.StaticCt, ex.GetType().Name);
-            }
-
-            if (result is { HasMoreWork: true })
-            {
-                continue;
-            }
-
-            try
-            {
-                await Task.Delay(options.PollInterval, timeProvider, stoppingToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
+                StaticCtLog.HeartbeatFailed(logger, ex.HResult);
             }
         }
     }

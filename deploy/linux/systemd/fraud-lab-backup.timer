@@ -1,0 +1,11 @@
+# Her gün 03:15 civarında yedek. Makine o saatte kapalıysa açılınca bir kez çalışır (Persistent).
+[Unit]
+Description=fraud-lab günlük yedek zamanlayıcısı
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

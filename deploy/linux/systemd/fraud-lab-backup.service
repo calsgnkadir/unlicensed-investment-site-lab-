@@ -1,0 +1,9 @@
+# Günlük veritabanı yedeği (kullanıcı servisi). Yolu kendi klasörünüze göre düzeltin.
+[Unit]
+Description=fraud-lab veritabanı yedeği
+
+[Service]
+Type=oneshot
+ExecStart=%h/fraud-lab/deploy/linux/backup.sh
+Nice=10
+IOSchedulingClass=idle

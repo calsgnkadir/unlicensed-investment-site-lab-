@@ -29,7 +29,40 @@ public sealed record SourceQuality(
     public int DomainsUnknown => DomainsOnlyErrors + DomainsNeverAttempted;
 }
 
-public sealed record QualityReport(DateTimeOffset GeneratedAt, int TargetDomains, IReadOnlyList<SourceQuality> Sources)
+/// <summary>
+/// Bir Static CT logunun kapsaması. Yalnızca sayılar; aday adı içermez (Kural 4).
+/// </summary>
+/// <param name="CheckpointAge">Son doğrulanıp kaydedilen checkpoint'in imza zamanından bu yana geçen süre.</param>
+/// <param name="SinceLastUpdate">ct_log_state satırının son değişiminden (ilerleme, hata, atlama) bu yana geçen süre.</param>
+/// <param name="CandidateRows">ct_candidates tablosundaki satır sayısı (bu log için).</param>
+public sealed record CtLogQuality(
+    string LogName,
+    long NextIndex,
+    long LatestCheckpointSize,
+    long EntriesProcessed,
+    long EntriesSkipped,
+    long CandidateRows,
+    int ConsecutiveFailures,
+    TimeSpan CheckpointAge,
+    TimeSpan SinceLastUpdate,
+    int LogRows,
+    int ErrorRows,
+    long ProcessedLast24Hours,
+    long SkippedLast24Hours,
+    IReadOnlyDictionary<CollectionErrorKind, int> ErrorsByKind)
+{
+    /// <summary>İşlenen / (işlenen + atlanan). Hiç kayıt yoksa <c>null</c>. Henüz okunmamış kayıt bu orana girmez.</summary>
+    public double? Coverage => EntriesProcessed + EntriesSkipped == 0
+        ? null
+        : (double)EntriesProcessed / (EntriesProcessed + EntriesSkipped);
+
+    /// <summary>Son checkpoint ile sıradaki indeks arasındaki, henüz okunmamış kayıt (sondaki kısmi tile dahil).</summary>
+    public long Backlog => Math.Max(0, LatestCheckpointSize - NextIndex);
+}
+
+/// <param name="StaticCtLogs">Static CT kapsaması; ct_log_state satırı olan her log için bir satır.</param>
+public sealed record QualityReport(
+    DateTimeOffset GeneratedAt, int TargetDomains, IReadOnlyList<SourceQuality> Sources, IReadOnlyList<CtLogQuality>? StaticCtLogs = null)
 {
     /// <summary>Konsol metni. Yalnızca sayılar; alan adı yazılmaz.</summary>
     public string ToText()
@@ -55,9 +88,57 @@ public sealed record QualityReport(DateTimeOffset GeneratedAt, int TargetDomains
             }
         }
 
+        AppendStaticCt(sb, c);
+
         sb.AppendLine();
         sb.AppendLine("Not: \"Yalnızca hata\" ve \"Hiç denenmedi\" grupları bilinmeyen durumdur; \"kayıt yok\" sayılmaz.");
         return sb.ToString();
+    }
+
+    private void AppendStaticCt(StringBuilder sb, CultureInfo c)
+    {
+        sb.AppendLine();
+        sb.AppendLine("[StaticCt]");
+        if (StaticCtLogs is not { Count: > 0 } logs)
+        {
+            sb.AppendLine("  Henüz izlenen log yok (ct_log_state boş).");
+            return;
+        }
+
+        foreach (var l in logs)
+        {
+            sb.AppendLine(c, $"  Log {l.LogName}:");
+            sb.AppendLine(c, $"    Sıradaki indeks:        {l.NextIndex}");
+            sb.AppendLine(c, $"    Son checkpoint boyutu:  {l.LatestCheckpointSize}");
+            sb.AppendLine(c, $"    Geride kalan:           {l.Backlog} (henüz okunmadı, sondaki kısmi tile dahil)");
+            sb.AppendLine(c, $"    İşlenen kayıt:          {l.EntriesProcessed}");
+            sb.AppendLine(c, $"    Atlanan kayıt:          {l.EntriesSkipped}");
+            sb.AppendLine(c, $"    Kapsama oranı:          {(l.Coverage is { } r ? r.ToString("P4", c) : "-")}");
+            sb.AppendLine(c, $"    Aday (ct_candidates):   {l.CandidateRows}");
+            sb.AppendLine(c, $"    Son 24 saat:            işlenen {l.ProcessedLast24Hours}, atlanan {l.SkippedLast24Hours}");
+            sb.AppendLine(c, $"    Son checkpoint yaşı:    {FormatAge(l.CheckpointAge)}");
+            sb.AppendLine(c, $"    Son durum değişimi:     {FormatAge(l.SinceLastUpdate)} önce");
+            sb.AppendLine(c, $"    Üst üste hata:          {l.ConsecutiveFailures}");
+            sb.AppendLine(c, $"    Log satırı:             {l.LogRows} (hata {l.ErrorRows})");
+            foreach (var (kind, count) in l.ErrorsByKind.OrderBy(k => k.Key))
+            {
+                sb.AppendLine(c, $"      {kind}: {count}");
+            }
+        }
+
+        sb.AppendLine("  Not: Kapsama = işlenen / (işlenen + atlanan). Geride kalan kayıtlar bu orana girmez, ayrıca yazılır.");
+    }
+
+    private static string FormatAge(TimeSpan age)
+    {
+        if (age < TimeSpan.Zero)
+        {
+            age = TimeSpan.Zero;
+        }
+
+        return age.TotalHours >= 1
+            ? string.Create(CultureInfo.InvariantCulture, $"{(long)age.TotalHours} sa {age.Minutes} dk")
+            : string.Create(CultureInfo.InvariantCulture, $"{age.Minutes} dk {age.Seconds} sn");
     }
 }
 
@@ -84,7 +165,65 @@ public sealed class QualityReportBuilder(FraudDbContext db, TimeProvider timePro
             await BuildSourceAsync(CollectionSource.WaybackCdx, targets, withSnapshots, snapshotCount, cancellationToken).ConfigureAwait(false),
         };
 
-        return new QualityReport(timeProvider.GetUtcNow(), targets.Count, sources);
+        var now = timeProvider.GetUtcNow();
+        var staticCt = await BuildStaticCtAsync(now, cancellationToken).ConfigureAwait(false);
+        return new QualityReport(now, targets.Count, sources, staticCt);
+    }
+
+    /// <summary>ct_log_state, ct_candidates ve collection_log'dan log başına sayılar. Aday adları okunmaz.</summary>
+    private async Task<List<CtLogQuality>> BuildStaticCtAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var states = await db.CtLogStates.AsNoTracking().OrderBy(s => s.LogName).ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (states.Count == 0)
+        {
+            return [];
+        }
+
+        var candidates = await db.CtCandidates
+            .GroupBy(x => x.LogName)
+            .Select(g => new { LogName = g.Key, Count = g.LongCount() })
+            .ToDictionaryAsync(x => x.LogName, x => x.Count, cancellationToken)
+            .ConfigureAwait(false);
+
+        var since = now.AddHours(-24);
+        var rows = await db.CollectionLog
+            .Where(l => l.Source == CollectionSource.StaticCt && l.CtLogName != null)
+            .GroupBy(l => new { l.CtLogName, l.Outcome, l.ErrorKind })
+            .Select(g => new
+            {
+                g.Key.CtLogName,
+                g.Key.Outcome,
+                g.Key.ErrorKind,
+                Rows = g.Count(),
+                Processed24 = g.Sum(x => x.FinishedAt >= since ? (long)x.ItemCount : 0L),
+                Skipped24 = g.Sum(x => x.FinishedAt >= since ? (long)x.SkippedItemCount : 0L),
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var result = new List<CtLogQuality>(states.Count);
+        foreach (var s in states)
+        {
+            var mine = rows.Where(r => r.CtLogName == s.LogName).ToList();
+            var errors = mine.Where(r => r.Outcome == CollectionOutcome.Error).ToList();
+            result.Add(new CtLogQuality(
+                s.LogName,
+                s.NextIndex,
+                s.LatestCheckpointSize,
+                s.EntriesProcessed,
+                s.EntriesSkipped,
+                candidates.GetValueOrDefault(s.LogName),
+                s.ConsecutiveFailures,
+                now - s.PendingCheckpointTimestamp,
+                now - s.UpdatedAt,
+                mine.Sum(r => r.Rows),
+                errors.Sum(r => r.Rows),
+                mine.Sum(r => r.Processed24),
+                mine.Sum(r => r.Skipped24),
+                errors.GroupBy(r => r.ErrorKind).ToDictionary(g => g.Key, g => g.Sum(r => r.Rows))));
+        }
+
+        return result;
     }
 
     private async Task<SourceQuality> BuildSourceAsync(

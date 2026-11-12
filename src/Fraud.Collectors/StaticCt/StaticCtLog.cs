@@ -32,4 +32,20 @@ internal static partial class StaticCtLog
     [LoggerMessage(EventId = 205, Level = LogLevel.Error,
         Message = "CT log #{LogNumber}: checkpoint geriye gitti veya önceki checkpoint ile tutarsız. Görülen {PreviousSize}, yeni {NewSize}")]
     public static partial void CheckpointInconsistent(ILogger logger, int logNumber, long previousSize, long newSize);
+
+    [LoggerMessage(EventId = 206, Level = LogLevel.Warning,
+        Message = "CT log #{LogNumber}: başka bir süreç bu logu izliyor (veritabanı kilidi dolu). Bu süreç bekliyor, kilit boşalınca devam eder.")]
+    public static partial void LockBusy(ILogger logger, int logNumber);
+
+    [LoggerMessage(EventId = 207, Level = LogLevel.Information,
+        Message = "CT log #{LogNumber}: veritabanı kilidi alındı; izleme bu süreçte.")]
+    public static partial void LockAcquired(ILogger logger, int logNumber);
+
+    [LoggerMessage(EventId = 208, Level = LogLevel.Warning,
+        Message = "CT log #{LogNumber}: veritabanı kilidi kaybedildi (bağlantı koptu). Tur yapılmadan kilit yeniden istenecek.")]
+    public static partial void LockLost(ILogger logger, int logNumber);
+
+    [LoggerMessage(EventId = 209, Level = LogLevel.Warning,
+        Message = "CT izleme: sağlık dosyası yazılamadı (HResult {HResult}). Konteyner sağlık kontrolü başarısız görünecek.")]
+    public static partial void HeartbeatFailed(ILogger logger, int hResult);
 }
