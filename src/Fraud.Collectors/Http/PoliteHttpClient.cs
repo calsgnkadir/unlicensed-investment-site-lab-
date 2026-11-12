@@ -20,7 +20,7 @@ public sealed record HttpFetchResult(byte[]? Body, int? HttpStatus, int Attempts
 /// Her deneme bir <see cref="AttemptResult"/> üretir; istisnalar burada yakalanıp hata türüne çevrilir.
 /// Polly yalnızca "bu sonuç tekrar denenmeli mi, ne kadar beklenmeli" sorusunu cevaplar.
 /// Tekrar denenen hatalar: 429, 408, 5xx, zaman aşımı, bağlantı hatası.
-/// Tekrar denenmeyenler: diğer 4xx, boyut aşımı (aynı yanıt yine büyük gelir).
+/// Tekrar denenmeyenler: diğer 4xx, boyut aşımı (aynı yanıt yine büyük gelir), bozuk sıkıştırma.
 /// </remarks>
 public sealed class PoliteHttpClient
 {
@@ -127,13 +127,26 @@ public sealed class PoliteHttpClient
                 return AttemptResult.Failed(CollectionErrorKind.ResponseTooLarge, status, null);
             }
 
-            var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-            await using (stream.ConfigureAwait(false))
+            try
             {
-                var body = await BoundedStreamReader.ReadAsync(stream, _options.MaxResponseBytes, token).ConfigureAwait(false);
-                return body is null
-                    ? AttemptResult.Failed(CollectionErrorKind.ResponseTooLarge, status, null)
-                    : new AttemptResult(body, status, CollectionErrorKind.None, null);
+                var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+                await using (stream.ConfigureAwait(false))
+                {
+                    var body = await BoundedStreamReader.ReadAsync(stream, _options.MaxResponseBytes, token).ConfigureAwait(false);
+                    return body is null
+                        ? AttemptResult.Failed(CollectionErrorKind.ResponseTooLarge, status, null)
+                        : new AttemptResult(body, status, CollectionErrorKind.None, null);
+                }
+            }
+            catch (InvalidDataException)
+            {
+                // Bozuk gzip veya deflate gövdesi. Aynı yanıt yine bozuk gelir; tekrar denenmez.
+                return AttemptResult.Failed(CollectionErrorKind.InvalidResponse, status, null);
+            }
+            catch (InvalidOperationException)
+            {
+                // BrotliStream bozuk veride InvalidOperationException fırlatır. Yalnızca gövde okunurken yakalanır.
+                return AttemptResult.Failed(CollectionErrorKind.InvalidResponse, status, null);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

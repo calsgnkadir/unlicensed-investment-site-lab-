@@ -119,7 +119,7 @@ public sealed class HostileSourceResponseTests
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"Birleştirme {watch.Elapsed.TotalSeconds:F1} sn sürdü.");
     }
 
-    [Fact(Skip = "açık: JsonElement.GetString geçersiz UTF-8'de InvalidOperationException fırlatıyor, CrtShResponseParser yakalamıyor (orta)")]
+    [Fact]
     public void CrtSh_invalid_utf8_inside_a_string_is_invalid_not_thrown()
     {
         // Geçerli JSON yapısı, ama issuer_name içinde geçersiz UTF-8 baytı (0xFF).
@@ -151,7 +151,7 @@ public sealed class HostileSourceResponseTests
         Assert.False(Cdx(new string('[', 10_000) + new string(']', 10_000)).IsValid);
     }
 
-    [Fact(Skip = "açık: CdxResponseParser başlıkta yinelenen sütunda ToDictionary ile ArgumentException fırlatıyor (orta)")]
+    [Fact]
     public void Cdx_duplicate_header_column_is_invalid_not_thrown()
     {
         const string json = """[["timestamp","original","timestamp"],["20260101000000","http://ornek.example/","x"]]""";
@@ -161,7 +161,7 @@ public sealed class HostileSourceResponseTests
         Assert.Null(exception);
     }
 
-    [Fact(Skip = "açık: CdxResponseParser.ReadRow geçersiz UTF-8'de InvalidOperationException fırlatıyor (orta)")]
+    [Fact]
     public void Cdx_invalid_utf8_inside_a_row_is_invalid_not_thrown()
     {
         var head = Encoding.UTF8.GetBytes("""[["timestamp","original"],["20260101000000","http://ornek.example/""");
@@ -221,7 +221,7 @@ public sealed class HostileSourceResponseTests
 
     // ---------- Etki zinciri: hata collection_log'a yazılmadan tur durur ----------
 
-    [Fact(Skip = "açık: SourceCollector.CollectAsync FetchAsync istisnasını yakalamıyor; collection_log satırı yazılmadan tur durur (orta)")]
+    [Fact]
     public async Task Malformed_cdx_page_does_not_escape_the_collector_as_an_exception()
     {
         // FetchAsync istisnası, veritabanına dokunulmadan önce fırlar; bu yüzden gerçek bir veritabanı gerekmez.

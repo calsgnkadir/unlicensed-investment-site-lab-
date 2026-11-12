@@ -27,10 +27,10 @@ public sealed class DomainName
 
     public long Id { get; private set; }
 
-    /// <summary>Normalleştirilmiş tam ad, ASCII biçimde. Örnek: <c>panel.ornek.com</c>.</summary>
+    /// <summary>Normalleştirilmiş tam ad, ASCII biçimde. Örnek: <c>panel.ornek.example</c>.</summary>
     public string Host { get; private set; }
 
-    /// <summary>Kayıtlı alan adı (Public Suffix List kurallarına göre). Örnek: <c>ornek.com.tr</c>.</summary>
+    /// <summary>Kayıtlı alan adı (Public Suffix List kurallarına göre). Örnek: <c>panel.ornek.example</c> için <c>ornek.example</c>.</summary>
     public string RegistrableDomain { get; private set; }
 
     /// <summary>Genel sonek. Örnek: <c>com.tr</c>.</summary>

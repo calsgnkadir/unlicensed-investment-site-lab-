@@ -5,6 +5,8 @@ using Fraud.Infrastructure.DomainNames;
 namespace Fraud.Integration.Tests.DomainNames;
 
 // Bu dosyadaki adların hepsi uydurmadır. Gerçek bir siteyi örnek olarak kullanmayın.
+// .com için RFC 2606 ile ayrılmış example.com kullanılır. Gerçek çok etiketli sonek kuralı (com.tr, co.uk ...)
+// gereken testlerde ayrılmış ad yoktur; orada anlamsız "uydurma-zq" etiketi kullanılır.
 [Trait("Category", "Unit")]
 public sealed class PublicSuffixDomainNormalizerTests
 {
@@ -18,29 +20,29 @@ public sealed class PublicSuffixDomainNormalizerTests
     }
 
     [Theory]
-    [InlineData("ornek.com")]
-    [InlineData("ORNEK.COM")]
-    [InlineData("Ornek.Com")]
-    [InlineData("www.ornek.com")]
-    [InlineData("WWW.ORNEK.COM")]
-    [InlineData("ornek.com.")]
-    [InlineData("www.ornek.com.")]
-    [InlineData("  ornek.com  ")]
-    [InlineData("ornek[.]com")]
-    [InlineData("https://ornek.com")]
-    [InlineData("https://www.ornek.com/")]
-    [InlineData("http://www.ornek.com/giris?ref=1#ust")]
-    [InlineData("HTTPS://WWW.ORNEK.COM/Giris")]
-    [InlineData("http://kullanici:parola@ornek.com:8080/yol")]
-    [InlineData("ornek.com:443")]
-    [InlineData("ornek.com/kampanya")]
-    [InlineData("//ornek.com/yol")]
+    [InlineData("example.com")]
+    [InlineData("EXAMPLE.COM")]
+    [InlineData("Example.Com")]
+    [InlineData("www.example.com")]
+    [InlineData("WWW.EXAMPLE.COM")]
+    [InlineData("example.com.")]
+    [InlineData("www.example.com.")]
+    [InlineData("  example.com  ")]
+    [InlineData("example[.]com")]
+    [InlineData("https://example.com")]
+    [InlineData("https://www.example.com/")]
+    [InlineData("http://www.example.com/giris?ref=1#ust")]
+    [InlineData("http://example.com:8080/yol")]
+    [InlineData("HTTPS://WWW.EXAMPLE.COM/Giris")]
+    [InlineData("example.com:443")]
+    [InlineData("example.com/kampanya")]
+    [InlineData("//example.com/yol")]
     public void Variants_of_the_same_name_normalize_to_one_host(string input)
     {
         var d = Ok(input);
 
-        Assert.Equal("ornek.com", d.Host);
-        Assert.Equal("ornek.com", d.RegistrableDomain);
+        Assert.Equal("example.com", d.Host);
+        Assert.Equal("example.com", d.RegistrableDomain);
         Assert.Equal("com", d.PublicSuffix);
         Assert.Null(d.Subdomain);
         Assert.False(d.IsSubdomain);
@@ -49,10 +51,10 @@ public sealed class PublicSuffixDomainNormalizerTests
     [Fact]
     public void Subdomain_is_kept_and_registrable_domain_is_separated()
     {
-        var d = Ok("panel.ornek-yatirim.com.tr");
+        var d = Ok("panel.uydurma-zq.com.tr");
 
-        Assert.Equal("panel.ornek-yatirim.com.tr", d.Host);
-        Assert.Equal("ornek-yatirim.com.tr", d.RegistrableDomain);
+        Assert.Equal("panel.uydurma-zq.com.tr", d.Host);
+        Assert.Equal("uydurma-zq.com.tr", d.RegistrableDomain);
         Assert.Equal("com.tr", d.PublicSuffix);
         Assert.Equal("panel", d.Subdomain);
         Assert.True(d.IsSubdomain);
@@ -61,18 +63,18 @@ public sealed class PublicSuffixDomainNormalizerTests
     [Fact]
     public void Multi_label_subdomain_is_kept_whole()
     {
-        var d = Ok("a.b.ornek.com");
+        var d = Ok("a.b.example.com");
 
         Assert.Equal("a.b", d.Subdomain);
-        Assert.Equal("ornek.com", d.RegistrableDomain);
+        Assert.Equal("example.com", d.RegistrableDomain);
     }
 
     [Fact]
     public void Only_a_leading_www_label_is_removed()
     {
-        Assert.Equal("panel.ornek.com", Ok("www.panel.ornek.com").Host);
-        Assert.Equal("panel.www.ornek.com", Ok("panel.www.ornek.com").Host);
-        Assert.Equal("www2.ornek.com", Ok("www2.ornek.com").Host);
+        Assert.Equal("panel.example.com", Ok("www.panel.example.com").Host);
+        Assert.Equal("panel.www.example.com", Ok("panel.www.example.com").Host);
+        Assert.Equal("www2.example.com", Ok("www2.example.com").Host);
     }
 
     [Fact]
@@ -86,10 +88,10 @@ public sealed class PublicSuffixDomainNormalizerTests
     }
 
     [Theory]
-    [InlineData("ornek.com.tr", "ornek.com.tr", "com.tr")]
-    [InlineData("ornek.bel.tr", "ornek.bel.tr", "bel.tr")]
-    [InlineData("ornek.tr", "ornek.tr", "tr")]
-    [InlineData("panel.ornek.co.uk", "ornek.co.uk", "co.uk")]
+    [InlineData("uydurma-zq.com.tr", "uydurma-zq.com.tr", "com.tr")]
+    [InlineData("uydurma-zq.bel.tr", "uydurma-zq.bel.tr", "bel.tr")]
+    [InlineData("uydurma-zq.tr", "uydurma-zq.tr", "tr")]
+    [InlineData("panel.uydurma-zq.co.uk", "uydurma-zq.co.uk", "co.uk")]
     public void Multi_label_public_suffixes_are_respected(string input, string registrable, string suffix)
     {
         var d = Ok(input);
@@ -102,9 +104,9 @@ public sealed class PublicSuffixDomainNormalizerTests
     public void Private_section_suffixes_make_each_tenant_its_own_registrable_domain()
     {
         // Barındırma platformlarında her kiracı ayrı bir sahip sayılır; platformun tamamı etiketlenmez.
-        var d = Ok("ornek-yatirim.github.io");
+        var d = Ok("uydurma-zq.github.io");
 
-        Assert.Equal("ornek-yatirim.github.io", d.RegistrableDomain);
+        Assert.Equal("uydurma-zq.github.io", d.RegistrableDomain);
         Assert.Equal("github.io", d.PublicSuffix);
     }
 
@@ -112,8 +114,8 @@ public sealed class PublicSuffixDomainNormalizerTests
     public void Wildcard_and_exception_rules_are_applied()
     {
         // Listede "*.ck" ve "!www.ck" kuralları var.
-        var wildcard = Ok("panel.ornek.alan.ck");
-        Assert.Equal("ornek.alan.ck", wildcard.RegistrableDomain);
+        var wildcard = Ok("panel.uydurma-zq.alan.ck");
+        Assert.Equal("uydurma-zq.alan.ck", wildcard.RegistrableDomain);
         Assert.Equal("alan.ck", wildcard.PublicSuffix);
 
         var exception = Ok("www.ck");
@@ -135,19 +137,19 @@ public sealed class PublicSuffixDomainNormalizerTests
     [Fact]
     public void Turkish_characters_are_converted_to_punycode()
     {
-        var d = Ok("örnek-yatırım.com");
+        var d = Ok("örnek-yatırım.example");
 
         Assert.StartsWith("xn--", d.Host, StringComparison.Ordinal);
         Assert.Equal(d.Host, d.RegistrableDomain);
-        Assert.Equal("örnek-yatırım.com", d.UnicodeHost);
-        Assert.Equal(new IdnMapping().GetAscii("örnek-yatırım.com"), d.Host);
+        Assert.Equal("örnek-yatırım.example", d.UnicodeHost);
+        Assert.Equal(new IdnMapping().GetAscii("örnek-yatırım.example"), d.Host);
     }
 
     [Fact]
     public void Punycode_and_unicode_inputs_give_the_same_result()
     {
-        var fromUnicode = Ok("https://www.ÖRNEK-yatırım.com/");
-        var fromAscii = Ok(new IdnMapping().GetAscii("örnek-yatırım.com"));
+        var fromUnicode = Ok("https://www.ÖRNEK-yatırım.example/");
+        var fromAscii = Ok(new IdnMapping().GetAscii("örnek-yatırım.example"));
 
         Assert.Equal(fromUnicode, fromAscii);
     }
@@ -156,15 +158,15 @@ public sealed class PublicSuffixDomainNormalizerTests
     public void Uppercase_dotted_and_dotless_i_follow_invariant_rules()
     {
         // Büyük "I" her zaman "i" olur, "ı" olmaz. Türkçe kültürde ToLower() bunu "ı" yapardı ve
-        // "ORNEKI.COM" yanlışlıkla "ornekı.com" (başka bir IDN ad) olurdu.
-        Assert.Equal("orneki.com", Ok("ORNEKI.COM").Host);
+        // "ORNEKI.EXAMPLE" yanlışlıkla "ornekı.example" (başka bir IDN ad) olurdu.
+        Assert.Equal("orneki.example", Ok("ORNEKI.EXAMPLE").Host);
 
         // Büyük "İ" de "i" olur.
-        Assert.Equal("istanbul-ornek.com", Ok("İSTANBUL-ORNEK.COM").Host);
+        Assert.Equal("istanbul-ornek.example", Ok("İSTANBUL-ORNEK.EXAMPLE").Host);
 
         // Küçük "ı" ise gerçekten farklı bir harftir ve korunur.
-        Assert.NotEqual(Ok("ornekı.com").Host, Ok("orneki.com").Host);
-        Assert.StartsWith("xn--", Ok("ornekı.com").Host, StringComparison.Ordinal);
+        Assert.NotEqual(Ok("ornekı.example").Host, Ok("orneki.example").Host);
+        Assert.StartsWith("xn--", Ok("ornekı.example").Host, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -174,12 +176,12 @@ public sealed class PublicSuffixDomainNormalizerTests
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("tr-TR");
-            var underTurkish = Ok("WWW.YATIRIM-ORNEKI.COM.TR");
+            var underTurkish = Ok("WWW.YATIRIM-ORNEKI.EXAMPLE");
 
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-            var underInvariant = Ok("WWW.YATIRIM-ORNEKI.COM.TR");
+            var underInvariant = Ok("WWW.YATIRIM-ORNEKI.EXAMPLE");
 
-            Assert.Equal("yatirim-orneki.com.tr", underTurkish.Host);
+            Assert.Equal("yatirim-orneki.example", underTurkish.Host);
             Assert.Equal(underInvariant, underTurkish);
         }
         finally
@@ -192,18 +194,18 @@ public sealed class PublicSuffixDomainNormalizerTests
     public void Internationalized_suffix_rules_match_both_forms()
     {
         // Listede "公司.cn" kuralı var; ASCII biçimi "xn--55qx5d.cn".
-        var fromUnicode = Ok("ornek.公司.cn");
-        var fromAscii = Ok("ornek.xn--55qx5d.cn");
+        var fromUnicode = Ok("uydurma-zq.公司.cn");
+        var fromAscii = Ok("uydurma-zq.xn--55qx5d.cn");
 
         Assert.Equal("xn--55qx5d.cn", fromUnicode.PublicSuffix);
-        Assert.Equal("ornek.xn--55qx5d.cn", fromUnicode.RegistrableDomain);
+        Assert.Equal("uydurma-zq.xn--55qx5d.cn", fromUnicode.RegistrableDomain);
         Assert.Equal(fromUnicode, fromAscii);
     }
 
     [Theory]
-    [InlineData("ornek.com")]
-    [InlineData("WWW.Panel.Ornek-Yatirim.COM.TR.")]
-    [InlineData("https://örnek-yatırım.com/a")]
+    [InlineData("example.com")]
+    [InlineData("WWW.Panel.Uydurma-ZQ.COM.TR.")]
+    [InlineData("https://örnek-yatırım.example/a")]
     [InlineData("ornek-yatirim.example")]
     public void Normalization_is_idempotent(string input)
     {
@@ -218,20 +220,25 @@ public sealed class PublicSuffixDomainNormalizerTests
     [InlineData("", DomainNormalizationError.Empty)]
     [InlineData("   ", DomainNormalizationError.Empty)]
     [InlineData("https://", DomainNormalizationError.Unparseable)]
-    [InlineData("ornek com", DomainNormalizationError.Unparseable)]
-    [InlineData("ornek.com:abc", DomainNormalizationError.Unparseable)]
+    [InlineData("example com", DomainNormalizationError.Unparseable)]
+    [InlineData("example.com:abc", DomainNormalizationError.Unparseable)]
     [InlineData("192.0.2.10", DomainNormalizationError.IpAddress)]
     [InlineData("http://192.0.2.10:8080/panel", DomainNormalizationError.IpAddress)]
     [InlineData("http://[2001:db8::1]/", DomainNormalizationError.IpAddress)]
-    [InlineData("ornek..com", DomainNormalizationError.InvalidSyntax)]
-    [InlineData("-ornek.com", DomainNormalizationError.InvalidSyntax)]
-    [InlineData("ornek-.com", DomainNormalizationError.InvalidSyntax)]
-    [InlineData("ornek_yatirim.com", DomainNormalizationError.InvalidSyntax)]
-    [InlineData("ornek!.com", DomainNormalizationError.InvalidSyntax)]
-    [InlineData("ornek.com..", DomainNormalizationError.InvalidSyntax)]
+    [InlineData("example..com", DomainNormalizationError.InvalidSyntax)]
+    [InlineData("-example.com", DomainNormalizationError.InvalidSyntax)]
+    [InlineData("example-.com", DomainNormalizationError.InvalidSyntax)]
+    [InlineData("ornek_yatirim.example", DomainNormalizationError.InvalidSyntax)]
+    [InlineData("example!.com", DomainNormalizationError.InvalidSyntax)]
+    [InlineData("example.com..", DomainNormalizationError.InvalidSyntax)]
     [InlineData("com", DomainNormalizationError.PublicSuffixOnly)]
     [InlineData("com.tr", DomainNormalizationError.PublicSuffixOnly)]
     [InlineData("www.com", DomainNormalizationError.None)]
+    [InlineData("http://kullanici:parola@example.com:8080/yol", DomainNormalizationError.EmailOrUserInfo)]
+    [InlineData("destek@posta.example", DomainNormalizationError.EmailOrUserInfo)]
+    [InlineData("MAILTO:destek@posta.example", DomainNormalizationError.EmailOrUserInfo)]
+    [InlineData("mailto:posta.example", DomainNormalizationError.EmailOrUserInfo)]
+    [InlineData("https://example.com/?email=kisi@posta.example", DomainNormalizationError.EmailOrUserInfo)]
     public void Invalid_inputs_are_rejected_with_a_reason(string? input, DomainNormalizationError expected)
     {
         var result = Normalizer.Normalize(input);
@@ -262,11 +269,11 @@ public sealed class PublicSuffixDomainNormalizerTests
     public void Custom_list_can_be_supplied()
     {
         // Gömülü liste yerine küçük bir liste ile de çalışır (sonraki liste güncellemelerini denemek için).
-        var custom = new PublicSuffixDomainNormalizer("// ===BEGIN ICANN DOMAINS===\ncom\nornek.com\n// ===END ICANN DOMAINS===\n");
+        var custom = new PublicSuffixDomainNormalizer("// ===BEGIN ICANN DOMAINS===\ncom\nexample.com\n// ===END ICANN DOMAINS===\n");
 
-        var d = custom.Normalize("panel.ornek.com").Value!;
+        var d = custom.Normalize("panel.example.com").Value!;
 
-        Assert.Equal("ornek.com", d.PublicSuffix);
-        Assert.Equal("panel.ornek.com", d.RegistrableDomain);
+        Assert.Equal("example.com", d.PublicSuffix);
+        Assert.Equal("panel.example.com", d.RegistrableDomain);
     }
 }

@@ -19,8 +19,8 @@ public sealed class OfficialActionImporterTests(PostgresFixture postgres)
         ornek-yatirim.example,2026/46,2026-08-14,kripto,2026-05-02,7,var,https://spk.gov.tr/bulten/2026-46
         https://www.ORNEK-YATIRIM.example/giris,2026/46,2026-08-14,kripto,,,,https://spk.gov.tr/bulten/2026-46
         ornek-yatirim.example,2026/47,2026-08-21,kripto,,,,https://spk.gov.tr/bulten/2026-47
-        panel.ornek-kaldirac.com.tr,2026/47,2026-08-21,kaldıraçlı,,,,https://spk.gov.tr/bulten/2026-47
-        örnek-yatırım.com,2026/47,2026-08-21,diğer,,,,https://spk.gov.tr/bulten/2026-47
+        panel.ornek-kaldirac.example,2026/47,2026-08-21,kaldıraçlı,,,,https://spk.gov.tr/bulten/2026-47
+        örnek-yatırım.example,2026/47,2026-08-21,diğer,,,,https://spk.gov.tr/bulten/2026-47
         eksik-bulten.example,,2026-08-21,kripto,,,,https://spk.gov.tr/bulten/2026-47
         eksik-kaynak.example,2026/47,2026-08-21,kripto,,,,
         """;
@@ -70,12 +70,12 @@ public sealed class OfficialActionImporterTests(PostgresFixture postgres)
         Assert.Equal(new DateOnly(2026, 8, 14), first.DecisionDate);
         Assert.Equal("ornek-yatirim.example", first.ListedAs);
 
-        var subdomain = actions.Single(a => a.Domain.Host == "panel.ornek-kaldirac.com.tr");
-        Assert.Equal("ornek-kaldirac.com.tr", subdomain.Domain.RegistrableDomain);
+        var subdomain = actions.Single(a => a.Domain.Host == "panel.ornek-kaldirac.example");
+        Assert.Equal("ornek-kaldirac.example", subdomain.Domain.RegistrableDomain);
         Assert.Equal(OfficialActionCategory.Leveraged, subdomain.Category);
 
         var idn = actions.Single(a => a.Domain.Host.StartsWith("xn--", StringComparison.Ordinal));
-        Assert.Equal("örnek-yatırım.com", idn.Domain.UnicodeHost);
+        Assert.Equal("örnek-yatırım.example", idn.Domain.UnicodeHost);
     }
 
     [Fact]
@@ -110,14 +110,14 @@ public sealed class OfficialActionImporterTests(PostgresFixture postgres)
 
         await ImportAsync(db, $"""
             {OfficialActionCsvParserTests.Header}
-            ornek.com,2026/5,2026-02-12,kripto,,,,https://spk.gov.tr/bulten/2026-5
+            ornek.example,2026/5,2026-02-12,kripto,,,,https://spk.gov.tr/bulten/2026-5
             """, FirstRunAt);
         db.ChangeTracker.Clear();
 
         var report = await ImportAsync(db, $"""
             {OfficialActionCsvParserTests.Header}
-            ornek.com,2026/5,2026-02-13,diğer,,,,https://spk.gov.tr/bulten/2026-5
-            yeni-ornek.com,2026/5,2026-02-12,kripto,,,,https://spk.gov.tr/bulten/2026-5
+            ornek.example,2026/5,2026-02-13,diğer,,,,https://spk.gov.tr/bulten/2026-5
+            yeni-ornek.example,2026/5,2026-02-12,kripto,,,,https://spk.gov.tr/bulten/2026-5
             """, SecondRunAt);
 
         Assert.Equal(1, report.Inserted);
@@ -127,7 +127,7 @@ public sealed class OfficialActionImporterTests(PostgresFixture postgres)
         Assert.Contains("kategori", conflict.Detail, StringComparison.Ordinal);
 
         db.ChangeTracker.Clear();
-        var stored = await db.OfficialActions.Include(a => a.Domain).SingleAsync(a => a.Domain.Host == "ornek.com", ct);
+        var stored = await db.OfficialActions.Include(a => a.Domain).SingleAsync(a => a.Domain.Host == "ornek.example", ct);
         Assert.Equal(new DateOnly(2026, 2, 12), stored.DecisionDate);
         Assert.Equal(OfficialActionCategory.Crypto, stored.Category);
     }
@@ -140,8 +140,8 @@ public sealed class OfficialActionImporterTests(PostgresFixture postgres)
 
         await ImportAsync(db, $"""
             {OfficialActionCsvParserTests.Header}
-            ornek.com,2026/5,2026-02-12,kripto,,,,https://spk.gov.tr/bulten/2026-5
-            WWW.ORNEK.COM,2026/9,2026-03-12,kripto,,,,https://spk.gov.tr/bulten/2026-9
+            ornek.example,2026/5,2026-02-12,kripto,,,,https://spk.gov.tr/bulten/2026-5
+            WWW.ORNEK.EXAMPLE,2026/9,2026-03-12,kripto,,,,https://spk.gov.tr/bulten/2026-9
             """, FirstRunAt);
 
         db.ChangeTracker.Clear();
@@ -157,7 +157,7 @@ public sealed class OfficialActionImporterTests(PostgresFixture postgres)
 
         await ImportAsync(db, $"""
             {OfficialActionCsvParserTests.Header}
-            ornek.com,2026/5,2026-02-12,kripto,,,,https://spk.gov.tr/bulten/2026-5
+            ornek.example,2026/5,2026-02-12,kripto,,,,https://spk.gov.tr/bulten/2026-5
             """, FirstRunAt);
 
         var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlRawAsync(

@@ -4,7 +4,7 @@ namespace Fraud.Domain.DomainNames;
 /// Normalleştirme sonucu.
 /// </summary>
 /// <param name="Host">Küçük harfli, sondaki noktası ve baştaki <c>www.</c> etiketi atılmış ASCII ad.</param>
-/// <param name="RegistrableDomain">Kayıtlı alan adı. Örnek: <c>ornek.com.tr</c>.</param>
+/// <param name="RegistrableDomain">Kayıtlı alan adı. Örnek: <c>panel.ornek.example</c> için <c>ornek.example</c>.</param>
 /// <param name="Subdomain">Kayıtlı alan adının solunda kalan kısım; yoksa <c>null</c>.</param>
 /// <param name="PublicSuffix">Genel sonek. Örnek: <c>com.tr</c>.</param>
 /// <param name="UnicodeHost">Gösterim için Unicode biçim.</param>

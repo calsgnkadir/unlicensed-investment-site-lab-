@@ -18,6 +18,13 @@ public enum DomainNormalizationError
 
     /// <summary>Ad, kendisi bir genel sonek (ör. <c>com.tr</c>); kayıtlı alan adı yok.</summary>
     PublicSuffixOnly,
+
+    /// <summary>
+    /// Girdi <c>@</c> veya <c>mailto:</c> içeriyor: e-posta adresi ya da kullanıcı bilgili adres.
+    /// <c>@</c> sonrası atılıp kalan ad kabul edilseydi, e-posta adresi e-posta sağlayıcısının alan adı
+    /// için resmi işlem kaydına dönüşürdü (yanlış suçlama). Bu girdi elle incelenmelidir.
+    /// </summary>
+    EmailOrUserInfo,
 }
 
 /// <summary>

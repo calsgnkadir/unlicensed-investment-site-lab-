@@ -10,9 +10,10 @@ namespace Fraud.Infrastructure.DomainNames;
 
 /// <summary>
 /// Alan adı normalleştirici. Adımlar sırasıyla:
-/// 1) boşlukları at, <c>ornek[.]com</c> yazımını geri çevir;
-/// 2) tam URL ise şemayı, yolu, kullanıcı bilgisini ve portu atıp yalnızca ana bilgisayar adını al;
-/// 3) sondaki tek noktayı at (<c>ornek.com.</c>);
+/// 0) <c>@</c> veya <c>mailto:</c> içeren girdiyi reddet (e-posta adresi ya da kullanıcı bilgili adres);
+/// 1) boşlukları at, <c>ornek[.]example</c> yazımını geri çevir;
+/// 2) tam URL ise şemayı, yolu ve portu atıp yalnızca ana bilgisayar adını al;
+/// 3) sondaki tek noktayı at (<c>ornek.example.</c>);
 /// 4) kültürden bağımsız küçük harfe çevir (Türkçe I/ı ve İ tuzakları için <see cref="ToLowerTurkishSafe"/>);
 /// 5) IDN adı punycode'a (ASCII) çevir ve sözdizimini denetle;
 /// 6) Public Suffix List ile genel soneki ve kayıtlı alan adını bul;
@@ -56,6 +57,13 @@ public sealed class PublicSuffixDomainNormalizer : IDomainNameNormalizer
         if (string.IsNullOrWhiteSpace(input))
         {
             return DomainNormalizationResult.Failure(DomainNormalizationError.Empty);
+        }
+
+        // E-posta adresi veya kullanıcı bilgili adres sessizce alan adına çevrilmez; satır reddedilir.
+        // "destek@posta.example" kabul edilseydi e-posta sağlayıcısı "listede" görünürdü.
+        if (input.Contains('@', StringComparison.Ordinal) || input.Contains("mailto:", StringComparison.OrdinalIgnoreCase))
+        {
+            return DomainNormalizationResult.Failure(DomainNormalizationError.EmailOrUserInfo);
         }
 
         var host = ExtractHost(input.Trim().Replace("[.]", ".", StringComparison.Ordinal));
@@ -150,7 +158,7 @@ public sealed class PublicSuffixDomainNormalizer : IDomainNameNormalizer
     }
 
     /// <summary>
-    /// Girdi tam URL ya da "ornek.com/yol" biçiminde olabilir. Uri sınıfı yerine elle ayrıştırma
+    /// Girdi tam URL ya da "ornek.example/yol" biçiminde olabilir. Uri sınıfı yerine elle ayrıştırma
     /// kullanılır; Uri'nin kendi IDN ve büyük/küçük harf davranışına bağlı kalmamak için.
     /// </summary>
     private static string? ExtractHost(string value)
@@ -171,11 +179,7 @@ public sealed class PublicSuffixDomainNormalizer : IDomainNameNormalizer
             value = value[..pathStart];
         }
 
-        var userInfoEnd = value.LastIndexOf('@');
-        if (userInfoEnd >= 0)
-        {
-            value = value[(userInfoEnd + 1)..];
-        }
+        // Kullanıcı bilgisi ("kisi@") burada atılmaz: "@" içeren girdi Normalize başında reddedilir.
 
         // IPv6 köşeli parantezliyse portu ayırmaya çalışmayız; IP olarak reddedilecek.
         if (!value.StartsWith('['))

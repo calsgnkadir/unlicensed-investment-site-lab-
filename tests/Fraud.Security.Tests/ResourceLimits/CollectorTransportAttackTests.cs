@@ -57,7 +57,7 @@ public sealed class CollectorTransportAttackTests
         Assert.Null(result.Body);
     }
 
-    [Theory(Skip = "açık: PoliteHttpClient InvalidDataException ve InvalidOperationException yakalamıyor; o kaynağın turu tamamen durur (orta)")]
+    [Theory]
     [InlineData("gzip")]
     [InlineData("deflate")]
     [InlineData("br")]

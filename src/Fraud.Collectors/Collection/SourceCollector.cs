@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Fraud.Domain.Collection;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -38,6 +39,8 @@ public abstract class SourceCollector<T>(TimeProvider timeProvider) : ISourceCol
     protected abstract Task<int> StoreAsync(
         FraudDbContext db, long domainId, IReadOnlyList<T> items, DateTimeOffset observedAt, CancellationToken cancellationToken);
 
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Güvenilmez yanıttan çıkan her istisna collection_log'a hata olarak yazılmalı; tur durmamalı.")]
     public async Task<CollectionLogEntry> CollectAsync(
         FraudDbContext db, CollectionTarget target, string measurementLocation, CancellationToken cancellationToken)
     {
@@ -53,6 +56,18 @@ public abstract class SourceCollector<T>(TimeProvider timeProvider) : ISourceCol
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             result = SourceResult.Failed<T>(CollectionErrorKind.Cancelled, null, 0);
+        }
+        catch (OperationCanceledException)
+        {
+            // Dışarıdan iptal yok ama bir iç süre sınırı doldu.
+            result = SourceResult.Failed<T>(CollectionErrorKind.Timeout, null, 0);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Kaynak yanıtı güvenilmezdir; ayrıştırıcıda gözden kaçan bir istisna (bozuk sıkıştırma,
+            // geçersiz UTF-8, yinelenen sütun ...) turu durdurmamalı. Sonuç "kayıt yok" değil, hata olarak yazılır.
+            // İstisna mesajı yazılmaz: sorgu adresi, yani alan adı içerebilir.
+            result = SourceResult.Failed<T>(CollectionErrorKind.InvalidResponse, null, 0);
         }
 
         // İptal edilse bile log satırı yazılsın diye buradan sonrası iptal belirtecini kullanmaz.

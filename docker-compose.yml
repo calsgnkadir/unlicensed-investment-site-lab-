@@ -36,6 +36,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__FraudDb: "Host=db;Port=5432;Database=fraud_lab;Username=fraud_lab;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
+      # Şemayı yalnızca bu servis günceller. İki servis aynı anda migration uygulamaya çalışmasın diye
+      # toplayıcıda kapalıdır; toplayıcı, bu servis sağlıklı (yani migration bitmiş) olunca başlar.
       Database__MigrateOnStartup: "true"
     ports:
       - "127.0.0.1:${API_PORT:-58080}:8080"
@@ -66,10 +68,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # API, açılışta migration'ı uygular ve ancak sonra sağlıklı olur.
+      api:
+        condition: service_healthy
     environment:
       DOTNET_ENVIRONMENT: Production
       ConnectionStrings__FraudDb: "Host=db;Port=5432;Database=fraud_lab;Username=fraud_lab;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
-      Database__MigrateOnStartup: "true"
+      Database__MigrateOnStartup: "false"
       Collection__MeasurementLocation: ${MEASUREMENT_LOCATION:-lab-local}
     command: ["worker"]
     read_only: true

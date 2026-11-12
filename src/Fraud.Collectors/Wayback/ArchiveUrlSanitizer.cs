@@ -8,7 +8,7 @@ namespace Fraud.Collectors.Wayback;
 /// <remarks>
 /// Adreslerde e-posta, telefon veya oturum anahtarı genelde sorgu metninde (<c>?email=...</c>) taşınır.
 /// Bu yüzden sorgu metni, parça (<c>#...</c>) ve kullanıcı bilgisi atılır; <c>@</c> içeren yol parçası
-/// <c>[redacted]</c> yapılır. Araştırma için gereken bilgi (hangi ana bilgisayar, hangi yol, ne zaman) kalır.
+/// (yüzde kodlaması kaç kat olursa olsun: <c>%40</c>, <c>%2540</c>) <c>[redacted]</c> yapılır. Araştırma için gereken bilgi (hangi ana bilgisayar, hangi yol, ne zaman) kalır.
 /// </remarks>
 public static class ArchiveUrlSanitizer
 {
@@ -50,6 +50,33 @@ public static class ArchiveUrlSanitizer
         return url.Length <= MaxLength ? (url, queryRemoved) : null;
     }
 
-    private static bool LooksPersonal(string segment) =>
-        segment.Contains('@', StringComparison.Ordinal) || segment.Contains("%40", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Yüzde kodlaması en fazla bu kadar kat çözülür (<c>%252540</c> üç kat).</summary>
+    private const int MaxDecodeRounds = 4;
+
+    /// <summary>
+    /// Parça ya da yüzde kodlaması çözülmüş hallerinden biri <c>@</c> içeriyorsa kişisel sayılır.
+    /// <c>%40</c> bir kez, <c>%2540</c> iki kez çözülünce <c>@</c> olur; o yüzden değişmeyene kadar çözülür.
+    /// </summary>
+    private static bool LooksPersonal(string segment)
+    {
+        var current = segment;
+        for (var round = 0; round <= MaxDecodeRounds; round++)
+        {
+            if (current.Contains('@', StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            var decoded = Uri.UnescapeDataString(current);
+            if (decoded == current)
+            {
+                return false;
+            }
+
+            current = decoded;
+        }
+
+        // Bu kadar katmanlı kodlama olağan değil; güvenli tarafta kalınır.
+        return true;
+    }
 }

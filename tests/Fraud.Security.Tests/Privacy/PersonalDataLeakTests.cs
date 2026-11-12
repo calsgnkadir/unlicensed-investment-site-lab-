@@ -30,14 +30,14 @@ public sealed class PersonalDataLeakTests
         Assert.Null(CertificateFieldSanitizer.SanitizeName(value));
     }
 
-    [Fact(Skip = "açık: CertificateFieldSanitizer.DnsNamePattern '$' kullanıyor, '\\z' olmalı (düşük)")]
+    [Fact]
     public void Dns_name_check_does_not_accept_a_trailing_newline()
     {
         // .NET'te "$" son satır sonundan önce de eşleşir; "\z" kullanılmazsa "ad\n" geçerli DNS adı sayılır.
         Assert.False(CertificateFieldSanitizer.IsDnsName("ornek.example\n"));
     }
 
-    [Fact(Skip = "açık: IsDnsName sondaki satır sonunu kabul ediyor, sorgu adresine %0A girer (düşük)")]
+    [Fact]
     public void CrtSh_query_builder_rejects_a_host_with_a_trailing_newline()
     {
         Assert.Throws<ArgumentException>(() => CrtShClient.BuildQueryUri("ornek.example\n"));
@@ -58,7 +58,7 @@ public sealed class PersonalDataLeakTests
         Assert.Equal(expected, CertificateFieldSanitizer.SanitizeIssuer(dn));
     }
 
-    [Theory(Skip = "açık: SanitizeIssuer çok değerli RDN'i (+) bölmüyor; telefon ve kimlik no CN içinde saklanıyor (düşük, issuer CA tarafından yazılır)")]
+    [Theory]
     [InlineData("C=TR, CN=Ornek CA + telephoneNumber=+905551112233")]
     [InlineData("C=TR, CN=Ornek CA + serialNumber=12345678901")]
     [InlineData("C=TR, CN=Ornek CA+UID=ahmet.yilmaz")]
@@ -73,7 +73,7 @@ public sealed class PersonalDataLeakTests
         Assert.DoesNotContain("UID", sanitized, StringComparison.Ordinal);
     }
 
-    [Theory(Skip = "açık: SanitizeIssuer kontrol ve yön karakterlerini silmiyor; NUL veritabanı yazımını düşürebilir (düşük, issuer CA tarafından yazılır)")]
+    [Theory]
     [InlineData("O=Ornek\u0000Corp, CN=R3")]
     [InlineData("O=Ornek\r\nINFO sahte log satiri, CN=R3")]
     [InlineData("CN=\u202Etxt.exe")]
@@ -87,7 +87,7 @@ public sealed class PersonalDataLeakTests
         Assert.DoesNotContain(sanitized, c => char.IsControl(c) || c is '\u202E' or '\u202D' or '\u2066' or '\u2067' or '\u2068');
     }
 
-    [Fact(Skip = "açık: SanitizeIssuer 1024. karakterde keserken vekil çiftini bölüyor (düşük)")]
+    [Fact]
     public void Issuer_truncation_does_not_split_a_surrogate_pair()
     {
         // 1023 karakter + 2 karakterlik emoji: 1024'te kesilince yalnız kalan yüksek vekil (lone surrogate) oluşur.
@@ -142,7 +142,7 @@ public sealed class PersonalDataLeakTests
         }
     }
 
-    [Fact(Skip = "açık: ArchiveUrlSanitizer yalnızca @ ve %40 arıyor, %2540 kaçıyor (düşük)")]
+    [Fact]
     public void Archive_url_double_encoded_email_is_redacted()
     {
         // "%2540" iki kez çözülünce "@" olur. Yalnızca "@" ve "%40" aranıyor.

@@ -8,6 +8,11 @@ using Fraud.Domain.OfficialActions;
 namespace Fraud.Collectors.OfficialActions;
 
 /// <summary>CSV'den okunmuş ve doğrulanmış tek satır.</summary>
+/// <param name="ListedAs">
+/// Normalleştirilmiş ad (<see cref="NormalizedDomain.Host"/>). Ham hücre bilerek saklanmaz: yol, sorgu metni,
+/// kullanıcı bilgisi veya tablo formülü önekleri (<c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>) taşıyabilir.
+/// Ham metin gerekiyorsa kaynak bültene bakılır.
+/// </param>
 public sealed record OfficialActionRow(
     int RowNumber,
     NormalizedDomain Domain,
@@ -182,7 +187,7 @@ public sealed partial class OfficialActionCsvParser(
             return (null, Reject(RowRejectionReason.SourceHostNotAllowed, "kaynak bağlantısı izin listesinde değil"));
         }
 
-        return (new OfficialActionRow(rowNumber, domain, rawDomain, bulletin, date, category.Value, url), null);
+        return (new OfficialActionRow(rowNumber, domain, domain.Host, bulletin, date, category.Value, url), null);
     }
 
     private bool IsAllowedSourceHost(string host)
@@ -214,6 +219,8 @@ public sealed partial class OfficialActionCsvParser(
         };
     }
 
-    [GeneratedRegex(@"^\d{4}/\d{1,4}$", RegexOptions.CultureInvariant)]
+    // "\d" .NET'te Unicode rakamlarını da (ör. Arapça-Hint, tam genişlik) kabul eder; aynı bülten iki ayrı
+    // anahtar olmasın diye yalnızca ASCII rakam. "$" sondaki satır sonunu da kabul ettiği için "\z".
+    [GeneratedRegex(@"^[0-9]{4}/[0-9]{1,4}\z", RegexOptions.CultureInvariant)]
     private static partial Regex BulletinNumberPattern();
 }

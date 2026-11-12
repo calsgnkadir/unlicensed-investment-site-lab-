@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -10,7 +11,8 @@ namespace Fraud.Collectors.CrtSh;
 /// <list type="bullet">
 /// <item>Adlar: yalnızca DNS adı biçimindeki değerler kalır. E-posta (S/MIME), boşluklu metin, kişi adı düşer.</item>
 /// <item>Issuer: yalnızca C, O, OU ve CN alanları kalır; içinde <c>@</c> geçen alan düşer.
-/// Böylece <c>emailAddress=</c>, adres ve telefon gibi alanlar saklanmaz.</item>
+/// Böylece <c>emailAddress=</c>, adres ve telefon gibi alanlar saklanmaz. Çok değerli RDN (<c>+</c>) de bölünür;
+/// izinli bir alanın içinde başka alan saklanamaz. Kontrol ve yön karakterleri temizlenir.</item>
 /// </list>
 /// Kural "izin listesi" mantığıyla yazılır: Tanımadığımız şeyi saklamayız.
 /// </remarks>
@@ -58,7 +60,7 @@ public static partial class CertificateFieldSanitizer
         }
 
         var kept = new List<string>();
-        foreach (var part in SplitDistinguishedName(distinguishedName))
+        foreach (var part in SplitDistinguishedName(RemoveControlAndFormatCharacters(distinguishedName)))
         {
             var eq = part.IndexOf('=', StringComparison.Ordinal);
             if (eq <= 0)
@@ -75,10 +77,44 @@ public static partial class CertificateFieldSanitizer
         }
 
         var joined = string.Join(", ", kept);
-        return joined.Length <= MaxIssuerLength ? joined : joined[..MaxIssuerLength];
+        if (joined.Length <= MaxIssuerLength)
+        {
+            return joined;
+        }
+
+        // Kesme noktası bir vekil çiftinin (ör. emoji) ortasına düşerse yalnız yüksek vekil kalmasın.
+        var cut = char.IsHighSurrogate(joined[MaxIssuerLength - 1]) ? MaxIssuerLength - 1 : MaxIssuerLength;
+        return joined[..cut];
     }
 
-    /// <summary>Virgülle ayırır; tırnak içindeki ve <c>\</c> ile kaçırılmış virgüller bölmez.</summary>
+    /// <summary>
+    /// Kontrol karakterlerini (NUL, CR, LF ...) boşluğa çevirir, biçim karakterlerini (Unicode Cf: yön işaretleri
+    /// U+202A-U+202E ve U+2066-U+2069, sıfır genişlikli karakterler) siler. NUL PostgreSQL metin alanına yazılamaz;
+    /// CR/LF log ve panelde sahte satır, yön işaretleri ters çevrilmiş metin üretir.
+    /// </summary>
+    private static string RemoveControlAndFormatCharacters(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        foreach (var c in value)
+        {
+            if (char.IsControl(c))
+            {
+                builder.Append(' ');
+            }
+            else if (char.GetUnicodeCategory(c) != UnicodeCategory.Format)
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// RDN'lere ayırır: virgülde ve çok değerli RDN'in <c>+</c> işaretinde (ör. <c>CN=X + telephoneNumber=...</c>).
+    /// Tırnak içindeki ve <c>\</c> ile kaçırılmış işaretler bölmez. <c>+</c> yalnızca ardından bir alan adı ve
+    /// <c>=</c> geliyorsa ayırıcı sayılır; böylece <c>telephoneNumber=+90...</c> değerindeki <c>+</c> bölmez.
+    /// </summary>
     private static List<string> SplitDistinguishedName(string dn)
     {
         var parts = new List<string>();
@@ -97,7 +133,7 @@ public static partial class CertificateFieldSanitizer
                 inQuotes = !inQuotes;
                 current.Append(c);
             }
-            else if (c == ',' && !inQuotes)
+            else if (!inQuotes && (c == ',' || (c == '+' && AttributeStart().IsMatch(dn.AsSpan(i + 1)))))
             {
                 parts.Add(current.ToString());
                 current.Clear();
@@ -113,6 +149,11 @@ public static partial class CertificateFieldSanitizer
     }
 
     // İsteğe bağlı "*." öneki, ardından en az iki etiket. Etiket: harf, rakam, tire, alt çizgi; 1-63 karakter.
-    [GeneratedRegex(@"^(\*\.)?[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)+$", RegexOptions.CultureInvariant)]
+    // Sonda "$" değil "\z": .NET'te "$" sondaki satır sonundan önce de eşleşir ("ad\n" geçerli sayılırdı).
+    [GeneratedRegex(@"^(\*\.)?[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)+\z", RegexOptions.CultureInvariant)]
     private static partial Regex DnsNamePattern();
+
+    // Bir RDN alanının başlangıcı: "UID=" gibi bir ad ya da "2.5.4.3=" gibi bir OID, ardından "=".
+    [GeneratedRegex(@"^\s*(?:[A-Za-z][A-Za-z0-9-]*|[0-9]+(?:\.[0-9]+)*)\s*=", RegexOptions.CultureInvariant)]
+    private static partial Regex AttributeStart();
 }

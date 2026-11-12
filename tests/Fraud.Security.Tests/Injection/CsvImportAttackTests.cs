@@ -22,7 +22,7 @@ public sealed class CsvImportAttackTests
     private static string Row(string domain, string bulletin = "2026/46", string url = "https://spk.gov.tr/b/1") =>
         $"{domain},{bulletin},2026-01-08,kripto,,,,{url}\n";
 
-    [Theory(Skip = "açık: listed_as ham metin olarak saklanıyor, formül öneki temizlenmiyor (düşük; CSV dışa aktarımı gelince orta)")]
+    [Theory]
     [InlineData("\"=HYPERLINK(\"\"https://kotu.example\"\")://ornek.example\"")]
     [InlineData("=1+1@ornek.example")]
     [InlineData("+cmd@ornek.example")]
@@ -40,7 +40,7 @@ public sealed class CsvImportAttackTests
         }
     }
 
-    [Theory(Skip = "açık: listed_as ham metinde e-posta ve kullanıcı bilgisi kalıyor; Kural 5 (orta)")]
+    [Theory]
     [InlineData("kisi.adi@ornek.example")]
     [InlineData("https://ornek.example/?email=kisi@posta.example")]
     [InlineData("https://kisi:parola@ornek.example/")]
@@ -54,7 +54,7 @@ public sealed class CsvImportAttackTests
         }
     }
 
-    [Theory(Skip = "açık: normalleştirici kullanıcı bilgisini sessizce atıyor; e-posta adresi, e-posta sağlayıcısının alan adı için resmi işlem kaydına dönüşüyor (orta, yanlış suçlama)")]
+    [Theory]
     [InlineData("destek@posta.example")]
     [InlineData("mailto:destek@posta.example")]
     public void Email_address_in_domain_column_is_rejected_not_attributed_to_the_mail_provider(string value)
@@ -66,7 +66,7 @@ public sealed class CsvImportAttackTests
         Assert.Empty(result.Rows);
     }
 
-    [Theory(Skip = "açık: BulletinNumberPattern içindeki \\d Unicode rakamlarını kabul ediyor; [0-9] olmalı (düşük)")]
+    [Theory]
     [InlineData("\u0662\u0660\u0662\u0666/\u0664\u0666")] // Arapça-Hint rakamlarıyla 2026/46
     [InlineData("\uFF12\uFF10\uFF12\uFF16/46")]           // tam genişlik rakamlar
     public void Bulletin_number_accepts_only_ascii_digits(string bulletin)

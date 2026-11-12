@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Unicode;
 
 namespace Fraud.Collectors.CrtSh;
 
@@ -23,6 +24,25 @@ public sealed record CrtShParseResult(bool IsValid, IReadOnlyList<CrtShCertifica
 public static class CrtShResponseParser
 {
     public static CrtShParseResult Parse(ReadOnlyMemory<byte> json)
+    {
+        // Geçersiz UTF-8 baytı JsonDocument.Parse'tan geçer ama GetString'de istisna fırlatır; baştan reddedilir.
+        if (!Utf8.IsValid(json.Span))
+        {
+            return CrtShParseResult.Invalid;
+        }
+
+        try
+        {
+            return ParseDocument(json);
+        }
+        catch (InvalidOperationException)
+        {
+            // Kaçış dizisiyle yazılmış yalnız vekil karakter (ör. \ud800) GetString'de istisna fırlatır.
+            return CrtShParseResult.Invalid;
+        }
+    }
+
+    private static CrtShParseResult ParseDocument(ReadOnlyMemory<byte> json)
     {
         JsonDocument document;
         try

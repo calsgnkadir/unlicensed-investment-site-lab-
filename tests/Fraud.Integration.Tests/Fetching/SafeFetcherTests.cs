@@ -103,6 +103,25 @@ public sealed class SafeFetcherTests
     }
 
     [Fact]
+    public async Task Every_request_including_redirects_is_capped_below_http3()
+    {
+        // HTTP/3 (QUIC) bağlantısı ConnectCallback'ten geçmez; istek asla 2.0'ın üstüne çıkmamalı.
+        var handler = new FakeHttpHandler()
+            .EnqueueRedirect("/web/20260101000001/http://ornek.example/")
+            .EnqueueText("Merhaba", "text/plain");
+
+        using var fetcher = Fetcher(handler);
+        await fetcher.FetchAsync(ArchivePage, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, handler.Versions.Count);
+        Assert.All(handler.Versions, v =>
+        {
+            Assert.Equal(HttpVersion.Version20, v.Version);
+            Assert.Equal(HttpVersionPolicy.RequestVersionOrLower, v.Policy);
+        });
+    }
+
+    [Fact]
     public async Task Too_many_redirects_stop()
     {
         var handler = new FakeHttpHandler();

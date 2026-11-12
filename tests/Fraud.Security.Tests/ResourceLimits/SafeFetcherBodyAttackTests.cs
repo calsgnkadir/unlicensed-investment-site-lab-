@@ -33,7 +33,7 @@ public sealed class SafeFetcherBodyAttackTests
     [Theory]
     [InlineData("gzip")]
     [InlineData("deflate")]
-    [InlineData("br", Skip = "açık: BrotliStream bozuk veride InvalidOperationException fırlatıyor, SafeFetcher yakalamıyor (orta)")]
+    [InlineData("br")]
     public async Task Corrupt_compressed_body_is_reported_not_thrown(string encoding)
     {
         var handler = new StubHttpHandler().EnqueueBytes(Payloads.Garbage(4096), "text/html", encoding);
@@ -80,7 +80,7 @@ public sealed class SafeFetcherBodyAttackTests
     }
 
     [Theory]
-    [InlineData("text/html; charset=utf-7", Skip = "açık: Encoding.GetEncoding(utf-7) NotSupportedException fırlatıyor, yalnızca ArgumentException yakalanıyor (orta)")]
+    [InlineData("text/html; charset=utf-7")]
     [InlineData("text/html; charset=\"x-bilinmeyen\"")]
     [InlineData("text/html; charset=utf-32")]
     public async Task Hostile_charset_values_do_not_throw(string contentType)

@@ -24,6 +24,17 @@ namespace Fraud.Infrastructure.Fetching;
 /// </remarks>
 public sealed class SafeFetcher : ISafeFetcher, IDisposable
 {
+    /// <summary>
+    /// İstek en fazla HTTP/2 olur, asla HTTP/3'e yükseltilmez. HTTP/3 (QUIC) bağlantıları
+    /// <see cref="SocketsHttpHandler.ConnectCallback"/> üzerinden geçmez; yükseltilirse bağlantı anındaki IP denetimi atlanır.
+    /// </summary>
+    public static readonly Version RequestVersion = HttpVersion.Version20;
+
+    /// <summary><see cref="RequestVersion"/> ya da daha düşüğü (HTTP/1.1); daha yükseği asla.</summary>
+    public const HttpVersionPolicy RequestVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+
+    private const int Utf7CodePage = 65000;
+
     private readonly HttpClient _client;
     private readonly SafeFetcherOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -36,7 +47,12 @@ public sealed class SafeFetcher : ISafeFetcher, IDisposable
         ArgumentNullException.ThrowIfNull(transport);
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-        _client = new HttpClient(transport, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
+        _client = new HttpClient(transport, disposeHandler: true)
+        {
+            Timeout = Timeout.InfiniteTimeSpan,
+            DefaultRequestVersion = RequestVersion,
+            DefaultVersionPolicy = RequestVersionPolicy,
+        };
     }
 
     /// <summary>Bağlantı anında IP denetimi yapan gerçek ağ işleyicisi.</summary>
@@ -76,7 +92,11 @@ public sealed class SafeFetcher : ISafeFetcher, IDisposable
                     return SafeFetchResult.Blocked(block, current, redirects);
                 }
 
-                using var request = new HttpRequestMessage(HttpMethod.Get, current);
+                using var request = new HttpRequestMessage(HttpMethod.Get, current)
+                {
+                    Version = RequestVersion,
+                    VersionPolicy = RequestVersionPolicy,
+                };
                 request.Headers.UserAgent.ParseAdd(_options.UserAgent);
                 request.Headers.Accept.ParseAdd("text/html, text/plain;q=0.9");
                 request.Headers.AcceptEncoding.ParseAdd("gzip, deflate, br");
@@ -164,6 +184,12 @@ public sealed class SafeFetcher : ISafeFetcher, IDisposable
                 }
                 catch (InvalidDataException)
                 {
+                    // Bozuk gzip veya deflate gövdesi.
+                    return SafeFetchResult.Failed(SafeFetchStatus.InvalidResponse, at, status, redirects);
+                }
+                catch (InvalidOperationException)
+                {
+                    // BrotliStream bozuk veride InvalidOperationException fırlatır.
                     return SafeFetchResult.Failed(SafeFetchStatus.InvalidResponse, at, status, redirects);
                 }
 
@@ -202,7 +228,13 @@ public sealed class SafeFetcher : ISafeFetcher, IDisposable
         };
     }
 
-    /// <summary>Karakter kümesi başlıktan alınır; bilinmiyorsa UTF-8 (geçersiz bayt yerine U+FFFD).</summary>
+    /// <summary>
+    /// Karakter kümesi başlıktan alınır; bilinmiyor, desteklenmiyor ya da UTF-7 ise UTF-8 (geçersiz bayt yerine U+FFFD).
+    /// </summary>
+    /// <remarks>
+    /// UTF-7, "+ADw-script+AD4-" gibi yazımlarla süzgeçlerden kaçan işaretleme üretebilir; .NET'te varsayılan olarak
+    /// kapalıdır (<see cref="NotSupportedException"/>), ama biri açarsa da kullanılmasın diye ayrıca reddedilir.
+    /// </remarks>
     private static Encoding GetEncoding(MediaTypeHeaderValue? contentType)
     {
         var charset = contentType?.CharSet?.Trim().Trim('"');
@@ -211,14 +243,21 @@ public sealed class SafeFetcher : ISafeFetcher, IDisposable
             return Encoding.UTF8;
         }
 
+        Encoding encoding;
         try
         {
-            return CodePagesEncodingProvider.Instance.GetEncoding(charset) ?? Encoding.GetEncoding(charset);
+            encoding = CodePagesEncodingProvider.Instance.GetEncoding(charset) ?? Encoding.GetEncoding(charset);
         }
         catch (ArgumentException)
         {
             return Encoding.UTF8;
         }
+        catch (NotSupportedException)
+        {
+            return Encoding.UTF8;
+        }
+
+        return encoding.CodePage == Utf7CodePage ? Encoding.UTF8 : encoding;
     }
 
     private static bool IsBlockedAddress(Exception ex)

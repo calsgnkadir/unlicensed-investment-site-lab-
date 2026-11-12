@@ -38,16 +38,16 @@ public sealed class MigrationTests(PostgresFixture postgres)
         // Uygulama katmanı atlansa bile veritabanı kuralları geçersiz kaydı durdurur.
         await db.Database.ExecuteSqlRawAsync(
             "INSERT INTO domains (host, registrable_domain, public_suffix, unicode_host, first_observed_at) " +
-            "VALUES ('ornek.com', 'ornek.com', 'com', 'ornek.com', now())", ct);
+            "VALUES ('ornek.example', 'ornek.example', 'example', 'ornek.example', now())", ct);
 
         var blankBulletin = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlRawAsync(
             "INSERT INTO official_actions (domain_id, source, bulletin_number, decision_date, category, source_url, listed_as, observed_at) " +
-            "SELECT id, 'SpkBulletin', '  ', '2026-01-08', 'Crypto', 'https://spk.gov.tr/b/1', 'ornek.com', now() FROM domains", ct));
+            "SELECT id, 'SpkBulletin', '  ', '2026-01-08', 'Crypto', 'https://spk.gov.tr/b/1', 'ornek.example', now() FROM domains", ct));
         Assert.Equal(PostgresErrorCodes.CheckViolation, blankBulletin.SqlState);
 
         var badUrl = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlRawAsync(
             "INSERT INTO official_actions (domain_id, source, bulletin_number, decision_date, category, source_url, listed_as, observed_at) " +
-            "SELECT id, 'SpkBulletin', '2026/1', '2026-01-08', 'Crypto', 'spk.gov.tr/b/1', 'ornek.com', now() FROM domains", ct));
+            "SELECT id, 'SpkBulletin', '2026/1', '2026-01-08', 'Crypto', 'spk.gov.tr/b/1', 'ornek.example', now() FROM domains", ct));
         Assert.Equal(PostgresErrorCodes.CheckViolation, badUrl.SqlState);
     }
 }

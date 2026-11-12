@@ -17,6 +17,9 @@ public sealed class FakeHttpHandler : HttpMessageHandler
 
     public List<string> Accepts { get; } = [];
 
+    /// <summary>Her isteğin HTTP sürümü ve sürüm politikası.</summary>
+    public List<(Version Version, HttpVersionPolicy Policy)> Versions { get; } = [];
+
     public FakeHttpHandler Enqueue(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responder)
     {
         _responses.Enqueue(responder);
@@ -60,6 +63,7 @@ public sealed class FakeHttpHandler : HttpMessageHandler
         Requests.Add(request.RequestUri!);
         UserAgents.Add(request.Headers.UserAgent.ToString());
         Accepts.Add(request.Headers.Accept.ToString());
+        Versions.Add((request.Version, request.VersionPolicy));
         if (_responses.Count == 0)
         {
             throw new InvalidOperationException("Beklenmeyen istek: " + request.RequestUri);

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Fraud.Domain.Collection;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,8 @@ public sealed class CollectionRunner(
     TimeProvider timeProvider,
     ILogger<CollectionRunner> logger)
 {
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Bir alan adının beklenmeyen hatası turun geri kalanını durdurmamalı; yalnızca alan adı kimliği ve hata türü loglanır.")]
     public async Task<CollectionRunSummary> RunAsync(CollectionSource source, bool force, CancellationToken cancellationToken)
     {
         var collector = collectors.SingleOrDefault(c => c.Source == source)
@@ -60,9 +63,28 @@ public sealed class CollectionRunner(
             }
 
             db.ChangeTracker.Clear();
-            var entry = await collector
-                .CollectAsync(db, new CollectionTarget(target.DomainId, target.Host), options.MeasurementLocation, cancellationToken)
-                .ConfigureAwait(false);
+            CollectionLogEntry entry;
+            try
+            {
+                entry = await collector
+                    .CollectAsync(db, new CollectionTarget(target.DomainId, target.Host), options.MeasurementLocation, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                cancelled = true;
+                break;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Toplayıcı ağ ve ayrıştırma hatalarını kendisi log satırına çevirir. Buraya yalnızca yazma
+                // sırasındaki hatalar (ör. veritabanı) gelir. Bir alan adının hatası turu durdurmaz;
+                // log satırı yazılamadığı için bu hedef sonraki turda yeniden denenir.
+                // İstisna nesnesi ve mesajı loglanmaz (alan adı veya çekilen veri içerebilir).
+                failed++;
+                CollectorLog.TargetFailed(logger, source, target.DomainId, CollectionErrorKind.Unexpected, null, 0);
+                continue;
+            }
 
             newItems += entry.NewItemCount;
             switch (entry.Outcome)

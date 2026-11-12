@@ -70,7 +70,10 @@ public sealed class OfficialAction
     /// <summary>Bültenin bağlantısı.</summary>
     public string SourceUrl { get; private set; }
 
-    /// <summary>Kaynakta yazdığı haliyle ham metin (denetim için; eşleştirmede kullanılmaz).</summary>
+    /// <summary>
+    /// Kaynaktaki adın normalleştirilmiş hali (denetim için; eşleştirmede kullanılmaz). Ham hücre saklanmaz:
+    /// kullanıcı bilgisi, sorgu metni veya tablo formülü taşıyabilir.
+    /// </summary>
     public string ListedAs { get; private set; }
 
     /// <summary>Kaydın bu sisteme girdiği an.</summary>

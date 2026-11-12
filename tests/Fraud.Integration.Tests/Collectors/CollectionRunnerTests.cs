@@ -224,6 +224,56 @@ public sealed class CollectionRunnerTests(PostgresFixture postgres)
         Assert.DoesNotContain(".example", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Exception_from_one_source_query_is_logged_as_invalid_response_and_the_run_continues()
+    {
+        await using var db = await postgres.CreateMigratedContextAsync();
+        var ct = TestContext.Current.CancellationToken;
+        var (a, b) = await SeedAsync(db);
+        var time = new FakeTimeProvider(Start);
+
+        // A için istemci, ayrıştırıcıda gözden kaçmış bir hatayı taklit ederek istisna fırlatır.
+        var client = new FakeCrtShClient(host => host == a.Host
+            ? throw new InvalidOperationException("bozuk yanıt (sahte)")
+            : SourceResult.FromParsed<CrtShCertificate>([Cert(3001, "ornek-b.example")], 0, 200, 1, false));
+
+        var summary = await Runner(db, new CrtShCollector(client, new CrtShOptions(), time), time)
+            .RunAsync(CollectionSource.CrtSh, force: false, ct);
+
+        Assert.Equal((1, 1), (summary.Succeeded, summary.Failed));
+        db.ChangeTracker.Clear();
+        var logs = await db.CollectionLog.OrderBy(l => l.DomainId).ToListAsync(ct);
+        Assert.Equal(2, logs.Count);
+        Assert.Equal((a.Id, CollectionOutcome.Error, CollectionErrorKind.InvalidResponse), (logs[0].DomainId!.Value, logs[0].Outcome, logs[0].ErrorKind));
+        Assert.Equal((b.Id, CollectionOutcome.Success), (logs[1].DomainId!.Value, logs[1].Outcome));
+    }
+
+    [Fact]
+    public async Task Database_write_failure_for_one_domain_does_not_stop_the_run()
+    {
+        await using var db = await postgres.CreateMigratedContextAsync();
+        var ct = TestContext.Current.CancellationToken;
+        var (a, b) = await SeedAsync(db);
+        var time = new FakeTimeProvider(Start);
+
+        // NUL karakteri PostgreSQL metin alanına yazılamaz. Temizleyici bunu siler; burada istemci doğrudan
+        // temizlenmemiş kayıt döndürerek yazma hatasını taklit eder.
+        var poisoned = Cert(4001, "ornek-a.example") with { IssuerName = "CN=R3\u0000" };
+        var client = new FakeCrtShClient(host => host == a.Host
+            ? SourceResult.FromParsed<CrtShCertificate>([poisoned], 0, 200, 1, false)
+            : SourceResult.FromParsed<CrtShCertificate>([Cert(4002, "ornek-b.example")], 0, 200, 1, false));
+
+        var summary = await Runner(db, new CrtShCollector(client, new CrtShOptions(), time), time)
+            .RunAsync(CollectionSource.CrtSh, force: false, ct);
+
+        Assert.Equal((1, 1), (summary.Succeeded, summary.Failed));
+        db.ChangeTracker.Clear();
+        // A için işlem geri alındı: ne sertifika ne log satırı var; bu yüzden sonraki turda yeniden denenir.
+        var log = Assert.Single(await db.CollectionLog.ToListAsync(ct));
+        Assert.Equal(b.Id, log.DomainId);
+        Assert.Equal(4002, Assert.Single(await db.Certificates.ToListAsync(ct)).CrtShId);
+    }
+
     private sealed class FakeCrtShClient(Func<string, SourceResult<CrtShCertificate>> respond) : ICrtShClient
     {
         public Dictionary<string, int> Calls { get; } = [];

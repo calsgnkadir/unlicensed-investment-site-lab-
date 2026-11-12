@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Unicode;
 using System.Text.RegularExpressions;
 
 namespace Fraud.Collectors.Wayback;
@@ -22,6 +23,25 @@ public sealed record CdxPage(bool IsValid, IReadOnlyList<CdxCapture> Captures, i
 public static partial class CdxResponseParser
 {
     public static CdxPage Parse(ReadOnlyMemory<byte> json)
+    {
+        // Geçersiz UTF-8 baytı JsonDocument.Parse'tan geçer ama GetString'de istisna fırlatır; baştan reddedilir.
+        if (!Utf8.IsValid(json.Span))
+        {
+            return CdxPage.Invalid;
+        }
+
+        try
+        {
+            return ParseDocument(json);
+        }
+        catch (InvalidOperationException)
+        {
+            // Kaçış dizisiyle yazılmış yalnız vekil karakter (ör. \ud800) GetString'de istisna fırlatır.
+            return CdxPage.Invalid;
+        }
+    }
+
+    private static CdxPage ParseDocument(ReadOnlyMemory<byte> json)
     {
         JsonDocument document;
         try
@@ -53,7 +73,16 @@ public static partial class CdxResponseParser
                 return CdxPage.Invalid;
             }
 
-            var columns = header.Select((name, index) => (name, index)).ToDictionary(x => x.name, x => x.index, StringComparer.Ordinal);
+            // Aynı sütun iki kez gelirse hangisinin doğru olduğu bilinemez; yanıt geçersiz sayılır.
+            var columns = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var c = 0; c < header.Count; c++)
+            {
+                if (!columns.TryAdd(header[c], c))
+                {
+                    return CdxPage.Invalid;
+                }
+            }
+
             if (!columns.TryGetValue("timestamp", out var tsIndex) || !columns.TryGetValue("original", out var urlIndex))
             {
                 return CdxPage.Invalid;
@@ -166,9 +195,10 @@ public static partial class CdxResponseParser
         return value;
     }
 
-    [GeneratedRegex("^[0-9]{14}$", RegexOptions.CultureInvariant)]
+    // "$" sondaki satır sonundan önce de eşleşir; "\z" yalnızca metnin gerçek sonunda.
+    [GeneratedRegex(@"^[0-9]{14}\z", RegexOptions.CultureInvariant)]
     private static partial Regex TimestampPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9:+/=_-]{1,64}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9:+/=_-]{1,64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex DigestPattern();
 }
