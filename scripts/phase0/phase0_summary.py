@@ -5,7 +5,8 @@ Alan adı yazmaz. Sinyal veya model değildir; Aşama 0 fizibilite sorusunu ceva
 "Engellenen sitelerin karardan önce sertifika ve arşiv kaydı var mıydı?"
 
 Birim: alan adı. Bir alan adı birden fazla bültende geçtiyse en erken karar tarihi alınır.
-Kaynağı hata veren alan adları bilinmeyen sayılır, "kayıt yok" sayılmaz.
+Kaynağı yalnızca hata veren alan adları bilinmeyen sayılır, "kayıt yok" sayılmaz.
+Kaynağın başarılı ama boş döndüğü (Empty) alan adları bilinen sayılır: "kayıt yok" budur.
 """
 from __future__ import annotations
 
@@ -24,11 +25,11 @@ with decision as (
 ),
 crt as (
   select domain_id,
-         bool_or(outcome = 'Success') as ok
+         bool_or(outcome in ('Success', 'Empty')) as ok
   from collection_log where source = 'CrtSh' group by domain_id
 ),
 wb as (
-  select domain_id, bool_or(outcome = 'Success') as ok
+  select domain_id, bool_or(outcome in ('Success', 'Empty')) as ok
   from collection_log where source = 'WaybackCdx' group by domain_id
 ),
 cert as (
@@ -102,7 +103,7 @@ def main() -> int:
     bulletin_medians = [st.median(v) for v in by_bulletin.values()]
 
     print(f"Alan adı (en erken karar): {n}")
-    print(f"crt.sh başarılı: {pct(len(crt_known), n)}; hata (bilinmiyor): {n - len(crt_known)}")
+    print(f"crt.sh yanıtı bilinen: {pct(len(crt_known), n)}; yalnızca hata (bilinmiyor): {n - len(crt_known)}")
     print(f"Sertifikası olan: {pct(len(with_cert), len(crt_known))}")
     print(f"Karardan önce sertifika: {pct(len(before), len(crt_known))}")
     print(f"İlk sertifika ile karar arası (gün): {quartiles(lags)}")
@@ -117,7 +118,7 @@ def main() -> int:
             g = [r for r in group if r["wb_ok"]]
             print(f"{name}: herhangi kayıt {pct(sum(1 for r in g if r['first_capture']), len(g))}, "
                   f"karar öncesi 200 {pct(sum(1 for r in g if r['pre_200'] > 0), len(g))}")
-        print(f"Wayback başarılı: {pct(len(wb_known), n)}")
+        print(f"Wayback yanıtı bilinen (kayıtlı veya kesin boş): {pct(len(wb_known), n)}")
         arc_line("Arşiv, tümü", rows)
         arc_line("Arşiv, sertifikası 1 yıldan yeni", young)
         arc_line("Arşiv, sertifikası 1 yıldan eski", old)
