@@ -2,9 +2,13 @@ using Fraud.Collectors;
 using Fraud.Collectors.Collection;
 using Fraud.Collectors.OfficialActions;
 using Fraud.Collectors.Quality;
+using Fraud.Collectors.Http;
 using Fraud.Collectors.StaticCt;
+using Fraud.Collectors.Wayback;
 using Fraud.Domain.Collection;
+using Fraud.Domain.Fetching;
 using Fraud.Infrastructure;
+using Fraud.Infrastructure.Fetching;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,17 +24,19 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- ct-follow
 //   dotnet run --project src/Fraud.Collectors -- migrate
 //   dotnet run --project src/Fraud.Collectors -- ct-sample --tiles 3 [--log <ad>] [--max-requests 5] [--verify-root true]
+//   dotnet run --project src/Fraud.Collectors -- archive-sample [--count 20] [--seed <metin>] [--out data/private/phase0/arsiv_icerik]
 // Bağlantı metni: ConnectionStrings__FraudDb ortam değişkeni veya user-secrets.
 // Çıkış kodu: 0 = temiz, 2 = reddedilen/çakışan satır veya hatalı toplama var, 1 = hata, 64 = hatalı kullanım.
 
 const string Usage =
     "Kullanım: Fraud.Collectors <import-official-actions [--file <yol>] | collect-crtsh [--force true] | " +
     "collect-wayback [--force true] | worker | quality-report | ct-follow | migrate | " +
-    "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true]>";
+    "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true] | " +
+    "archive-sample [--count N] [--seed <metin>] [--out <klasör>]>";
 
 var command = args.Length > 0 ? args[0] : string.Empty;
 if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"
-    or "ct-follow" or "ct-sample" or "migrate"))
+    or "ct-follow" or "ct-sample" or "migrate" or "archive-sample"))
 {
     await Console.Error.WriteLineAsync(Usage).ConfigureAwait(false);
     return 64;
@@ -71,6 +77,21 @@ if (command == "worker")
 else if (command == "ct-follow")
 {
     builder.Services.AddHostedService<CtFollowWorker>();
+}
+else if (command == "archive-sample")
+{
+    // Güvenli çekici yalnızca bu komutta kaydedilir. İzinli tek ana bilgisayar web.archive.org (varsayılan liste;
+    // yapılandırmadan genişletilmez). Hız sınırı her HTTP isteğine, yönlendirme adımları dahil, uygulanır: 5 sn'de en fazla 1.
+    var collectionUserAgent = builder.Configuration["Collection:UserAgent"];
+    var fetcherOptions = new SafeFetcherOptions { Timeout = TimeSpan.FromSeconds(60), MaxRedirects = 3 };
+    if (!string.IsNullOrWhiteSpace(collectionUserAgent))
+    {
+        fetcherOptions.UserAgent = collectionUserAgent;
+    }
+
+    builder.Services.AddSingleton(sp => new RequestPacer(ArchiveSampleOptions.RequestInterval, sp.GetRequiredService<TimeProvider>()));
+    builder.Services.AddSafeFetcher(fetcherOptions,
+        (sp, transport) => new PacingHandler(sp.GetRequiredService<RequestPacer>()) { InnerHandler = transport });
 }
 
 using var host = builder.Build();
@@ -121,6 +142,22 @@ switch (command)
         var report = await scope.ServiceProvider.GetRequiredService<QualityReportBuilder>().BuildAsync(stop.Token).ConfigureAwait(false);
         await Console.Out.WriteAsync(report.ToText()).ConfigureAwait(false);
         return 0;
+    }
+
+    case "archive-sample":
+    {
+        var sampleOptions = new ArchiveSampleOptions
+        {
+            Count = builder.Configuration.GetValue("count", ArchiveSampleOptions.DefaultCount),
+            Seed = builder.Configuration["seed"] ?? ArchiveSampleOptions.DefaultSeed,
+            OutputDirectory = builder.Configuration["out"] ?? ArchiveSampleOptions.DefaultOutputDirectory,
+        };
+        await using var scope = host.Services.CreateAsyncScope();
+        return await ArchiveSampleCommand.RunAsync(
+            scope.ServiceProvider.GetRequiredService<FraudDbContext>(),
+            scope.ServiceProvider.GetRequiredService<ISafeFetcher>(),
+            sampleOptions,
+            stop.Token).ConfigureAwait(false);
     }
 
     default:

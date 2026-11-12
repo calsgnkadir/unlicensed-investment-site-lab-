@@ -31,19 +31,32 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Güvenli sayfa çekiciyi kaydeder. Hafta 2'de hiçbir iş bunu çağırmaz; arşiv içeriği sonraki
-    /// haftalarda, kural belgelendikten sonra çekilecek.
+    /// Güvenli sayfa çekiciyi kaydeder. Şu an yalnızca Aşama 0 <c>archive-sample</c> komutu kullanır.
     /// </summary>
-    public static IServiceCollection AddSafeFetcher(this IServiceCollection services, SafeFetcherOptions options)
+    /// <param name="decorateTransport">
+    /// İsteğe bağlı sarmalayıcı (ör. hız sınırı). Gerçek ağ işleyicisi her zaman en içte kalır; böylece
+    /// bağlantı anındaki IP denetimi (<see cref="SafeConnector"/>) atlanamaz. Sarmalayıcı yönlendirme
+    /// adımları dahil her HTTP isteğini görür.
+    /// </param>
+    public static IServiceCollection AddSafeFetcher(
+        this IServiceCollection services,
+        SafeFetcherOptions options,
+        Func<IServiceProvider, HttpMessageHandler, HttpMessageHandler>? decorateTransport = null)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         services.AddSingleton(options);
         services.AddSingleton<IHostAddressResolver, SystemHostAddressResolver>();
-        services.AddSingleton<ISafeFetcher>(sp => new SafeFetcher(
-            SafeFetcher.CreateTransport(sp.GetRequiredService<IHostAddressResolver>()),
-            options,
-            sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<ISafeFetcher>(sp =>
+        {
+            HttpMessageHandler transport = SafeFetcher.CreateTransport(sp.GetRequiredService<IHostAddressResolver>());
+            if (decorateTransport is not null)
+            {
+                transport = decorateTransport(sp, transport);
+            }
+
+            return new SafeFetcher(transport, options, sp.GetRequiredService<TimeProvider>());
+        });
         return services;
     }
 }

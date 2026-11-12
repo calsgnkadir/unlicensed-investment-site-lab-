@@ -2,7 +2,7 @@
 
 Tarih: 2026-11-13. Kaynak: Yerel veritabanı, `scripts/phase0/phase0_summary.py` çıktısı. Bu belgede yalnızca toplu sayılar var. Alan adı yazılmaz.
 
-**Kısa cevap:** Çekirdek proje için devam. Dört şarttan üçü tam karşılandı. Static CT hacmi ölçüldü, ancak hedef makinede bir günlük gerçek ölçüm henüz yapılmadı. Ağ katmanı kararı Hafta 4'e kaldı.
+**Kısa cevap:** Çekirdek proje için devam. Dört şarttan üçü tam karşılandı. Arşiv içeriği kontrolü yapıldı. Static CT hacmi ölçüldü, ancak hedef makinede bir günlük gerçek ölçüm henüz yapılmadı. Ağ katmanı kararı Hafta 4'e kaldı.
 
 Bu sonuçlar bir sinyalin işe yaradığını göstermez. Henüz kontrol grubu yok, bu yüzden yanlış alarm oranı ölçülmedi. Buradaki sayılar yalnızca şu soruya cevap verir: "Engellenen sitelerin karardan önce iz bırakıp bırakmadığına bakılabilir mi?"
 
@@ -81,6 +81,32 @@ Kategoriye göre ortanca süre: diğer 146,5 gün (112 alan adı), kaldıraçlı
 
 **Hata düzeltmesi:** Özet betiğinin ilk sürümü, Wayback'in kesin olarak boş döndüğü alan adlarını "bilinmiyor" sayıyordu. Bu yüzden arşiv oranı yanlışlıkla %100 çıktı. Hata bu belge yazılırken düzeltildi. Kesin boş sonuç artık "kayıt yok" sayılıyor, yalnızca hata alınan sonuç "bilinmiyor" sayılıyor.
 
+## Arşiv içeriği: Karar öncesi sayfa gerçekten yatırım sitesi mi?
+
+İlk sertifikası kararla arasında 1 yıldan az olan ve karardan önce 200 yanıtlı HTML arşiv kaydı bulunan 38 alan adı vardı. Bunlardan 20 tanesi sabit tohumlu rastgele sırayla seçildi (`archive-sample`, tohum `asama0-arsiv-2026-11-13`). Böylece seçim, sonucu bilen birinin tercihine bağlı kalmadı. Her alan adı için tek bir sayfa çekildi: Varsa ana sayfa, yoksa karara en yakın kayıt. 19 örnekte ana sayfa kaydı vardı. Sayfalar yalnızca web.archive.org'dan çekildi. Metinden e-posta, telefon, IBAN, mesajlaşma bağlantısı ve adresler silindi. Sayfayı iki bağımsız ve yazılım destekli inceleme birbirinin sonucunu görmeden sınıflandırdı.
+
+| Sınıf | Sayı |
+|---|---|
+| Yatırım veya alım satım hizmeti sunuyor | 14 |
+| İncelemeler uyuşmadı (yatırım mı, başka içerik mi) | 1 |
+| Başka içerik | 1 |
+| Karar için yetersiz metin | 3 |
+| Park, satılık veya yapım aşamasında sayfası | 0 |
+| Çekme hatası (sayfa HTML değildi) | 1 |
+
+- İki inceleme 20 sayfanın 19'unda aynı sınıfı verdi. Uyuşmayan sayfa, aracı kurum adı taşıyan ama çoğunlukla blog yazılarından oluşan bir sayfa.
+- 20 sayfanın 10'unda bir düzenleyiciden lisans veya yetki aldığı iddiası var. İki inceleme de bu sayıda uyuştu. Bu sayfaların 4'ünde iddia yalnızca bir menü bağlantısı ya da genel bir atıf, bu yüzden sınırda kalıyor. Bu iddialar resmi kayıtla henüz karşılaştırılmadı.
+- Dil dağılımı: 10 Türkçe, 6 İngilizce, 1 karışık, 3 sayfada okunabilir metin yok.
+
+**Okuma:** Karar öncesinde arşiv kaydı olan yeni alan adlarında içerik büyük ölçüde gerçek bir yatırım sitesine ait. Okunabilir 16 sayfanın 14'ü ya da 15'i yatırım sitesi, hiçbiri park sayfası değil. Bu sonuç etiketin içerik açısından tutarlı olduğunu destekliyor. Ancak bu tür bir arşiv kaydı yeni alan adlarının yalnızca yaklaşık %30'unda (38 / 127) var.
+
+**Sınırlar:**
+
+- Seçim yalnızca arşiv kaydı olan alan adlarından yapıldı. Bu yüzden sonuç, arşivi olmayan alan adlarına genellenemez.
+- Örnek 20 alan adından oluşuyor ve her alan adı için tek sayfa çekildi.
+- Sınıflandırmayı elle kontrol eden olmadı.
+- Uygun alan adı sayısı, özet betiğinde 39 iken burada 38. Bunun nedeni büyük olasılıkla bu komutun yalnızca `text/html` türündeki kayıtları sayması ve tarihi UTC'ye göre alması.
+
 ## Devam şartları
 
 | Şart | Durum |
@@ -92,7 +118,7 @@ Kategoriye göre ortanca süre: diğer 146,5 gün (112 alan adı), kaldıraçlı
 
 ## Açık kalanlar
 
-- **Arşiv içeriği kontrolü:** İlk sertifikası bir yıldan yeni olan 20 alan adının karar öncesi arşiv kaydı açılacak. Amaç, kaydın gerçekten yatırım içeriği mi yoksa park sayfası mı olduğunu görmek. Henüz yapılmadı.
+- **Lisans iddiaları:** 20 sayfanın 10'unda geçen lisans iddiası, isteğe bağlı iddia modülü için ilk işaret. Bu modüle geçmek için en az 30 cümle bulunmalı ve bu cümleler resmi kaynakla karşılaştırılabilmeli. İddialar henüz sayılmadı.
 - **Ağ katmanı:** DNS, RIPEstat ve InternetDB denemeleri Hafta 4'e kaldı. DNS ölçüm konumu kararı da o hafta verilecek.
 - **Kontrol grubu:** Aynı dönemde sertifika almış ve listede olmayan alan adlarından oluşacak. Bu grup olmadan hiçbir oran yorumlanamaz.
 
