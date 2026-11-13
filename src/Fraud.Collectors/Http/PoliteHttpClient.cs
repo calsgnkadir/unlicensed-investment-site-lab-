@@ -55,7 +55,14 @@ public sealed class PoliteHttpClient
         _pipeline = builder.Build();
     }
 
-    public async Task<HttpFetchResult> GetAsync(Uri uri, CancellationToken cancellationToken)
+    public Task<HttpFetchResult> GetAsync(Uri uri, CancellationToken cancellationToken) =>
+        GetAsync(uri, null, cancellationToken);
+
+    /// <param name="bodyStatuses">
+    /// Hata sayılmayıp gövdesi okunacak ek durum kodları (ör. InternetDB'nin "kayıt yok" için döndürdüğü 404).
+    /// Bu kodlar tekrar denenmez; sonucun <see cref="HttpFetchResult.HttpStatus"/> alanına bakıp karar vermek çağırana kalır.
+    /// </param>
+    public async Task<HttpFetchResult> GetAsync(Uri uri, IReadOnlySet<int>? bodyStatuses, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(uri);
 
@@ -64,7 +71,7 @@ public sealed class PoliteHttpClient
             async token =>
             {
                 attempts++;
-                return await SendOnceAsync(uri, token).ConfigureAwait(false);
+                return await SendOnceAsync(uri, bodyStatuses, token).ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -96,7 +103,7 @@ public sealed class PoliteHttpClient
         CollectionErrorKind.Timeout or
         CollectionErrorKind.NetworkError;
 
-    private async ValueTask<AttemptResult> SendOnceAsync(Uri uri, CancellationToken cancellationToken)
+    private async ValueTask<AttemptResult> SendOnceAsync(Uri uri, IReadOnlySet<int>? bodyStatuses, CancellationToken cancellationToken)
     {
         await _pacer.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -112,6 +119,8 @@ public sealed class PoliteHttpClient
 
             switch (status)
             {
+                case var s when bodyStatuses?.Contains(s) == true:
+                    break; // çağıran bu kodun gövdesini istiyor; aşağıda 2xx gibi okunur
                 case 429:
                     return AttemptResult.Failed(CollectionErrorKind.RateLimited, status, ReadRetryAfter(response.Headers.RetryAfter));
                 case 408:

@@ -8,8 +8,12 @@
 # Açılış sırası:
 #   1. db sağlıklı olur.
 #   2. migrate şemayı bir kez günceller ve çıkar (bu kurulumda şemayı yalnızca o günceller).
-#   3. ct-follow, migrate başarıyla bitince başlar. Kendisi migration yapmaz.
-# Makine yeniden açılınca Docker, db ve ct-follow'u kendisi başlatır; migrate tekrar çalışmaz (restart: "no").
+#   3. ct-follow ve network, migrate başarıyla bitince başlar. Kendileri migration yapmaz.
+# Makine yeniden açılınca Docker, db, ct-follow ve network'ü kendisi başlatır; migrate tekrar çalışmaz (restart: "no").
+#
+# network: Günlük ağ kaydı (worker). Sırayla DNS (UDP, TCP, DoH; saniyede en fazla 1 paket), RIPEstat ve InternetDB.
+# Açılışta hemen bir tur yapar, sonra 24 saat bekler. Yeniden başlarsa önbellek tekrar sorguyu önler
+# (DNS 20 saat, RIPEstat ve InternetDB IP başına 7 gün), veri çoğalmaz.
 # ct-follow veritabanı hazır olmadan başlarsa turu hata sayar, bekler ve yeniden dener.
 
 name: fraud-lab-ct
@@ -134,11 +138,38 @@ services:
     # Başlamış bir veritabanı yazması bitsin diye.
     stop_grace_period: 45s
 
+  network:
+    <<: *collectors
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      DOTNET_EnableDiagnostics: "0"
+      ConnectionStrings__FraudDb: "Host=db;Port=5432;Database=fraud_lab;Username=fraud_lab;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
+      Database__MigrateOnStartup: "false"
+      Collection__MeasurementLocation: ${DNS_LOCATION:-tr-ev-ubuntu}
+      # Ölçüm konumu kararı: docs/DECISIONS.md, 2026-11-13. Bütün gruplar aynı konumdan ölçülür.
+      Dns__Location: ${DNS_LOCATION:-tr-ev-ubuntu}
+      # Sıra önemli: RIPEstat ve InternetDB, IP'leri DNS turunun DoH cevaplarından alır.
+      Worker__Sources__0: Dns
+      Worker__Sources__1: RipeStat
+      Worker__Sources__2: InternetDb
+      Worker__Interval: "1.00:00:00"
+    command: ["worker"]
+    cpus: 0.5
+    mem_limit: 384m
+    pids_limit: 128
+    stop_grace_period: 30s
+
 networks:
   # İç ağ: Dışarıya çıkışı yok. Veritabanı yalnızca burada.
   backend:
     internal: true
-  # ct-follow'un CT loguna gidebilmesi için çıkış ağı.
+  # ct-follow'un CT loguna, network'ün DNS çözücülerine (UDP/TCP 53, 443), RIPEstat ve InternetDB'ye gidebilmesi için çıkış ağı.
   egress: {}
 
 volumes:

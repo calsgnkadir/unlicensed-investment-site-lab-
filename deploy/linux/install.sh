@@ -74,6 +74,8 @@ MEASUREMENT_LOCATION=lab-linux
 # 2026h2 17 Aralık 2026'da kapanıyor; açarsanız günde ~1-2 GB daha eklenir.
 CT_ENABLE_2027H1=true
 CT_ENABLE_2026H2=false
+# Günlük ağ kaydının (DNS, RIPEstat, InternetDB) ölçüm konumu. Karar: docs/DECISIONS.md, 2026-11-13.
+DNS_LOCATION=tr-ev-ubuntu
 EOF
     )
     unset password
@@ -105,6 +107,7 @@ cat <<EOF
 Kurulum tamam. Sonraki adımlar:
   Durum:      $SCRIPT_DIR/status.sh
   Canlı log:  docker compose -f $COMPOSE_FILE logs -f --tail 50 ct-follow
+  Ağ kaydı:   docker compose -f $COMPOSE_FILE logs -f --tail 50 network
   Yedek:      $SCRIPT_DIR/backup.sh   (günlük çalıştırma örneği README.md içinde)
 İlk sağlık sonucu birkaç dakika sürer (start_period 5 dk).
 EOF

@@ -8,6 +8,15 @@ public enum CollectionSource
 
     /// <summary>Static CT logu (c2sp.org/static-ct-api). Alan adına değil, logdaki bir indeks aralığına bağlıdır.</summary>
     StaticCt = 3,
+
+    /// <summary>Herkese açık DNS çözücüleri (UDP, TCP, DoH). Alan adına bağlıdır.</summary>
+    Dns = 4,
+
+    /// <summary>RIPEstat <c>network-info</c>: IP'den ASN ve önek. Alan adına değil IP'ye bağlıdır.</summary>
+    RipeStat = 5,
+
+    /// <summary>Shodan InternetDB: IP için hazır pasif port verisi. Alan adına değil IP'ye bağlıdır.</summary>
+    InternetDb = 6,
 }
 
 /// <summary>

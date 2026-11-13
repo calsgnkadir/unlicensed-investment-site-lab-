@@ -33,3 +33,25 @@ Her kayıt: tarih, karar, neden, alternatif.
 - **Kategori:** Liste girişi yalnızca kripto veya yalnızca kaldıraçlı işlem diyorsa o kategori. İkisini birlikte sayıyorsa ya da tür yazmıyorsa (99/3 listeleri) `diğer`. Bu tutucu bir seçim ve `diğer` sayısını artırır.
 - **Kişi adına benzeyen alan adları:** Listede açıkça geçtikleri için veride kalırlar, ama panelde ve raporda adlarıyla gösterilmezler.
 - **Etiketin anlamı:** "SPK erişim engeli listesinde" demektir, "dolandırıcı" demek değildir.
+
+## 2026-11-13: DNS ölçüm konumu ve DNS kodu (Hafta 4)
+
+**Karar:** DNS ölçümü Ubuntu makinesinden yapılır (ölçüm konumu `tr-ev-ubuntu`). Her alan adı aynı çözücüye üç yoldan sorulur: Düz UDP, TCP ve şifreli DoH (RFC 8484). Sonuçları birbirinden farklı çıkan sorgular "araya girme şüphesi" olarak işaretlenir. Cevapta bilinen bir engel sayfası IP'si varsa sorgu "engel işareti" alır ve barındırma bilgisi sayılmaz. Bütün gruplar (SPK listesi, adaylar, kontrol grubu) aynı konumdan ve aynı çözücülerden ölçülür.
+
+**DNS paket kodu:** DNS paketini kuran ve çözen kodu (RFC 1035) proje içinde yazıyoruz, hazır kütüphane kullanmıyoruz. Kodun açıklamasını Kadircan satır satır okuyup anlayacak.
+
+**Neden:** Türkiye'de erişim engelleri DNS cevabı değiştirilerek uygulanabiliyor. Güncel OONI bulguları büyük platformlar için bunu gösteriyor. Açık çözücülere giden UDP 53 trafiğinin bugün yakalanıp yakalanmadığına dair 2024–2026 tarihli bir ölçüm bulunamadı (bkz. [research/HAFTA4_AG_KAYNAKLARI.md](research/HAFTA4_AG_KAYNAKLARI.md)). Ev bağlantısından yapılan ölçüm bu yüzden kendiliğinden geçerli sayılmaz, karşılaştırmayla doğrulanır. DoH, servis sağlayıcının cevabı değiştirmesine karşı korur.
+
+**Alternatif:** Yurt dışında bir sanal sunucu. Engelden etkilenmez, ama aylık ücreti var ve yönetilmesi gereken ikinci bir makine demek. Karşılaştırma araya girmenin yaygın olduğunu gösterirse bu seçenek yeniden ele alınır.
+
+**Sınır:**
+- Ölçüm tek konumdan ve tek servis sağlayıcıdan yapılıyor.
+- Kullanılan herkese açık çözücüler sorgulanan alan adlarını görür.
+- Sonuç, "bu servis sağlayıcıdan, bu zamanda görünen cevap" olarak yazılır.
+- Geçmiş tarihlerin DNS verisine erişimimiz yok. Ölçüm ancak bugünden itibaren yapılabiliyor.
+
+## 2026-11-13: Ağ verisinin saklanması
+
+**Karar:** DNS, RIPEstat ve InternetDB kayıtları yerel PostgreSQL veritabanında tutulur. Veritabanı ve `pg_dump` yedekleri `data/private/` ile aynı gizlilik düzeyindedir: Repoya girmez, paylaşılmaz, rapora yalnızca toplu sayı olarak çıkar. InternetDB'nin `vulns` ve `hostnames` alanları saklanmaz.
+
+**Neden:** Kural 8 şüpheli listenin ve port verisinin repoya girmemesini ister. Veritabanı da repo dışında, bu yüzden aynı korumayı sağlıyor. Veriyi ayrıca dosyaya yazmak, sızabilecek ikinci bir kopya yaratırdı.

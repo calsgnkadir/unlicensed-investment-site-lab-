@@ -26,4 +26,12 @@ internal static partial class CollectorLog
 
     [LoggerMessage(EventId = 104, Level = LogLevel.Information, Message = "Sonraki toplama turu {Interval} sonra.")]
     public static partial void NextRun(ILogger logger, TimeSpan interval);
+
+    [LoggerMessage(EventId = 105, Level = LogLevel.Warning,
+        Message = "{Source} başka bir süreç tarafından toplanıyor (kilit alınamadı); bu tur sorgu atılmadan atlandı.")]
+    public static partial void SourceLocked(ILogger logger, CollectionSource source);
+
+    [LoggerMessage(EventId = 106, Level = LogLevel.Warning,
+        Message = "{Source} turu durduruldu: süreçler arası kilit kaybedildi (kilit bağlantısı koptu).")]
+    public static partial void LockLost(ILogger logger, CollectionSource source);
 }

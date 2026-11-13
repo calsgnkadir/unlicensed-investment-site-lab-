@@ -1,7 +1,8 @@
 # Canlı Static CT akışı: Linux kurulumu
 
-Bu klasör, `ct-follow` komutunu (Static CT logunu canlı izleyen süreç) bir Linux makinede 7/24 çalıştırmak içindir.
-Makinede yalnızca iki servis sürekli çalışır: PostgreSQL (`db`) ve izleyici (`ct-follow`). API bu makinede çalışmaz.
+Bu klasör, `ct-follow` komutunu (Static CT logunu canlı izleyen süreç) ve günlük ağ kaydını (`network`) bir Linux
+makinede 7/24 çalıştırmak içindir. Makinede üç servis sürekli çalışır: PostgreSQL (`db`), izleyici (`ct-follow`) ve
+ağ kaydı (`network`). API bu makinede çalışmaz.
 
 Bu bir araştırma aracıdır, yatırım tavsiyesi değildir. Toplanan aday listesi SPK veya USOM listesinde olmayan alan adları
 içerir; bu yüzden veritabanı ve yedekler gizlidir (bkz. "Güvenlik notları").
@@ -10,7 +11,9 @@ içerir; bu yüzden veritabanı ve yedekler gizlidir (bkz. "Güvenlik notları")
 
 - Sycamore Static CT logunun checkpoint ve tile dosyalarını okur, imzayı ve Merkle kökünü doğrular.
 - Ham tile diske yazılmaz. Yalnızca finans kelimesi geçen aday satırları ve sayaçlar saklanır.
-- Şüpheli sitelere hiçbir istek atmaz. Tek dış bağlantı CT logunun izleme adresidir.
+- Şüpheli sitelere hiçbir istek atmaz. Dış bağlantılar: CT logunun izleme adresi, iki herkese açık DNS çözücüsü
+  (Cloudflare 1.1.1.1 ve `cloudflare-dns.com`, Google 8.8.8.8 ve `dns.google`), `stat.ripe.net` ve
+  `internetdb.shodan.io`. Adresler koda gömülü izin listesindedir; ayarla değiştirilemez.
 - PostgreSQL portu dışarı açılmaz; veritabanı yalnızca Docker'ın iç ağında durur.
 
 ## Gereksinimler
@@ -80,12 +83,61 @@ geçmiş tablosu henüz yokken EF Core'un yazdığı bilinen bir satırdır; ard
 | `MEASUREMENT_LOCATION` | `collection_log` içindeki ölçüm konumu etiketi. Kişisel bilgi yazmayın; ör. `lab-linux`. |
 | `CT_ENABLE_2027H1` | `true` (varsayılan): 2027h1 dilimi izlenir. Günde ~15-16 GB. |
 | `CT_ENABLE_2026H2` | `false` (varsayılan). `true` ise 2026h2 dilimi de izlenir (günde ~1 GB daha; 17 Aralık 2026'da kapanıyor). |
+| `DNS_LOCATION` | İsteğe bağlı. Ağ kaydının ölçüm konumu. Varsayılan `tr-ev-ubuntu`. |
 | `CT_MIN_REQUEST_INTERVAL` | İsteğe bağlı. Log başına iki isteğin başlangıcı arasındaki en kısa süre. Varsayılan `00:00:00.500`. |
 
 Bu ayarlar yalnızca bu Linux kurulumunu etkiler; `src/Fraud.Collectors/appsettings.json` içindeki geliştirme
 varsayılanı değişmez.
 
 Ayar değişince: `docker compose -f docker-compose.ct.yml up -d` (yalnızca değişen servis yeniden başlar).
+
+## Günlük ağ kaydı (`network` servisi)
+
+`network` servisi `worker` komutunu şu sırayla çalıştırır, sonra 24 saat bekler:
+
+1. **DNS:** `official_actions` içindeki her alan adı, iki çözücüye üç yoldan (UDP, TCP, DoH) A, AAAA ve NS
+   türünde sorulur. Alan adı başına 18 sorgu, bütün yollar için ortak sınır saniyede en fazla 1 paket.
+   ~175 alan adı için tur yaklaşık 1 saat sürer. Kesik (TC) UDP cevabı TCP ile yeniden sorulur.
+   Cevapta bilinen engel sayfası IP'si varsa (`195.175.254.2`) kayıt "engel işareti" alır.
+2. **RIPEstat:** Yalnızca DoH ile alınmış, engel işareti olmayan A/AAAA cevaplarındaki IP'ler sorulur; alan adı
+   gönderilmez. Saniyede en fazla 1 istek, tek bağlantı, `sourceapp=fraudlab-research`. Bir IP 7 günde bir sorulur.
+   ASN bilinen bir CDN veya bulutsa (`cloudflare`, `akamai`, `fastly`, `aws`, `google`, `microsoft`) işaretlenir.
+3. **InternetDB:** Aynı IP'ler, haftada bir (IP başına 7 gün). Yalnızca port, etiket ve CPE saklanır;
+   `vulns` ve `hostnames` hiç saklanmaz.
+
+Sonuçlar `dns_snapshots`, `ip_asn_snapshots` ve `port_snapshots` tablolarına yazılır. Bu tablolar `data/private/` ile
+aynı gizliliktedir: yedekler dahil depoya ve rapora girmez, yalnızca toplu sayı yayımlanır.
+
+Ölçüm konumu `tr-ev-ubuntu` (karar: `docs/DECISIONS.md`, 2026-11-13). Başka bir makinede çalıştırırsanız `.env`
+içine `DNS_LOCATION=...` yazın (küçük harf, rakam, tire; kişisel bilgi yok). Konumu boş bir DNS kaydı yazılmaz:
+`Dns:Location` yoksa servis hiç sorgu atmadan durur.
+
+Karşılaştırma (yalnızca sayı basar, alan adı ve IP basmaz; sorgu atmaz, servis çalışırken de güvenlidir):
+
+```bash
+docker compose -f docker-compose.ct.yml run --rm network dns-compare            # son ölçüm günü
+docker compose -f docker-compose.ct.yml run --rm network dns-compare --day 2026-11-14
+```
+
+Elle toplama turu: Her ağ kaynağı (DNS, RIPEstat, InternetDB) PostgreSQL kilidiyle korunur; aynı kaynağı aynı anda
+tek süreç toplar. `network` servisi o kaynağı topluyorsa elle başlatılan komut hiç sorgu atmadan çıkar (çıkış kodu 75,
+"başka bir süreç tarafından toplanıyor"). Böylece çözücülere saniyede 1 paketten fazlası gitmez. Elle tur için önce
+servisi durdurun:
+
+```bash
+docker compose -f docker-compose.ct.yml stop network
+docker compose -f docker-compose.ct.yml run --rm network collect-dns
+docker compose -f docker-compose.ct.yml run --rm network collect-ripestat
+docker compose -f docker-compose.ct.yml run --rm network collect-internetdb
+docker compose -f docker-compose.ct.yml start network   # açılışta yeni tur başlar; önbellek tekrar sorguyu önler
+```
+
+`dns-compare`, her çözücü için UDP (ve TCP) cevabının DoH cevabıyla kaç alan adında farklı olduğunu, yol başına
+NXDOMAIN oranını, engel işareti sayısını ve TC sonrası TCP'ye geçiş sayısını yazar. "Farklı" araya girme kanıtı
+değildir; yük dağıtımı yapan siteler her sorguda farklı IP döndürebilir.
+
+Bilinen sınırlar: Ölçüm tek konumdan ve tek servis sağlayıcıdan yapılır. Çözücüler sorgulanan alan adlarını görür.
+Kayıtlar bugünden itibaren tutulur; karar tarihindeki DNS durumunu göstermez.
 
 ## Durum kontrolü
 
@@ -98,6 +150,8 @@ Yalnızca sayı basar, hiçbir alan adı basmaz:
 - Konteyner durumu ve sağlık sonucu (`ct-follow` her log en az bir turu 15 dakika içinde hatasız bitirmediyse `unhealthy`).
 - Log başına sıradaki indeks, son checkpoint boyutu, geride kalan kayıt, işlenen ve atlanan kayıt, kapsama oranı,
   aday sayısı, son checkpoint yaşı.
+- DNS: son 24 saatte çözücü ve yol başına sorgu, cevap, NXDOMAIN, hata, engel işareti, TC sonrası TCP ve ortalama
+  gecikme; RIPEstat ve InternetDB için son 7 günün sayıları.
 - Son 24 saatte tur, hata, işlenen tile ve tahmini indirme (`tahmini_indirme_gb` = işlenen tile x `AVG_TILE_KB`,
   varsayılan 175 KB). Konteyner açıldığından beri gerçek ağ trafiği de `docker stats` ile yazılır.
 - Son 1 saatte işlenen kayıt. Sıfırsa log durmuş, dilim kapanmış veya izleyici hata alıyor olabilir.

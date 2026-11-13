@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using Fraud.Collectors.Network;
 using Fraud.Domain.Collection;
+using Fraud.Domain.Network;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -7,7 +9,11 @@ using Microsoft.Extensions.Logging;
 namespace Fraud.Collectors.Collection;
 
 public sealed record CollectionRunSummary(
-    CollectionSource Source, int Targets, int SkippedFresh, int Succeeded, int Empty, int Failed, int NewItems, bool Cancelled);
+    CollectionSource Source, int Targets, int SkippedFresh, int Succeeded, int Empty, int Failed, int NewItems, bool Cancelled)
+{
+    /// <summary>Aynı kaynağı başka bir süreç topluyordu; bu tur hiç sorgu atmadan çıktı.</summary>
+    public bool LockedOut { get; init; }
+}
 
 /// <summary>
 /// Bir kaynak için bir toplama turu: official_actions içindeki alan adlarını sırayla sorgular.
@@ -27,17 +33,22 @@ public sealed class CollectionRunner(
 {
     [SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "Bir alan adının beklenmeyen hatası turun geri kalanını durdurmamalı; yalnızca alan adı kimliği ve hata türü loglanır.")]
-    public async Task<CollectionRunSummary> RunAsync(CollectionSource source, bool force, CancellationToken cancellationToken)
+    public Task<CollectionRunSummary> RunAsync(CollectionSource source, bool force, CancellationToken cancellationToken) =>
+        RunAsync(source, force, null, cancellationToken);
+
+    /// <param name="sourceLock">
+    /// Ağ kaynağı kilidi (DNS). Verilirse her alan adından önce <see cref="INetworkSourceLockHandle.IsHeldAsync"/> ile
+    /// denetlenir; kilit gittiyse (bağlantı koptu, başka süreç alabilir) tur o noktada iptal edilmiş gibi biter
+    /// (THREAT_MODEL N9). Tamamlanan alan adlarının satırları zaten yazılmıştır.
+    /// </param>
+    public async Task<CollectionRunSummary> RunAsync(
+        CollectionSource source, bool force, INetworkSourceLockHandle? sourceLock, CancellationToken cancellationToken)
     {
         var collector = collectors.SingleOrDefault(c => c.Source == source)
             ?? throw new InvalidOperationException($"{source} için toplayıcı kayıtlı değil.");
 
-        var targets = await db.OfficialActions
-            .Select(a => new { a.DomainId, a.Domain.Host })
-            .Distinct()
-            .OrderBy(t => t.DomainId)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        // Bugün bütün alan adı kaynakları (crt.sh, Wayback, DNS) yalnızca resmi listedeki adlara sorulur.
+        var targets = await NetworkTargetQuery.DomainsAsync(db, DomainSet.OfficialActions, cancellationToken).ConfigureAwait(false);
 
         var fresh = force
             ? []
@@ -62,12 +73,19 @@ public sealed class CollectionRunner(
                 break;
             }
 
+            if (sourceLock is not null && !await sourceLock.IsHeldAsync(cancellationToken).ConfigureAwait(false))
+            {
+                CollectorLog.LockLost(logger, source);
+                cancelled = true;
+                break;
+            }
+
             db.ChangeTracker.Clear();
             CollectionLogEntry entry;
             try
             {
                 entry = await collector
-                    .CollectAsync(db, new CollectionTarget(target.DomainId, target.Host), options.MeasurementLocation, cancellationToken)
+                    .CollectAsync(db, target, options.MeasurementLocation, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

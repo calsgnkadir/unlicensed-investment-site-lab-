@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Fraud.Domain.Collection;
+using Fraud.Domain.Network;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -60,9 +61,32 @@ public sealed record CtLogQuality(
     public long Backlog => Math.Max(0, LatestCheckpointSize - NextIndex);
 }
 
+/// <summary>
+/// IP tabanlı bir kaynağın (RIPEstat, InternetDB) sayıları. IP yazılmaz (Kural 4 ve 8).
+/// </summary>
+/// <param name="CdnOrCloud">Yalnızca RIPEstat: CDN veya bulut olarak işaretlenen satır sayısı.</param>
+/// <param name="Runs">collection_log'daki tur sayısı (tur başına bir satır).</param>
+public sealed record IpSourceQuality(
+    CollectionSource Source,
+    int Rows,
+    int DistinctIps,
+    int Success,
+    int Empty,
+    int Errors,
+    int CdnOrCloud,
+    int Runs,
+    int ErrorRuns,
+    DateTimeOffset? LastQueriedAt,
+    IReadOnlyDictionary<CollectionErrorKind, int> ErrorsByKind);
+
 /// <param name="StaticCtLogs">Static CT kapsaması; ct_log_state satırı olan her log için bir satır.</param>
+/// <param name="IpSources">RIPEstat ve InternetDB sayıları.</param>
 public sealed record QualityReport(
-    DateTimeOffset GeneratedAt, int TargetDomains, IReadOnlyList<SourceQuality> Sources, IReadOnlyList<CtLogQuality>? StaticCtLogs = null)
+    DateTimeOffset GeneratedAt,
+    int TargetDomains,
+    IReadOnlyList<SourceQuality> Sources,
+    IReadOnlyList<CtLogQuality>? StaticCtLogs = null,
+    IReadOnlyList<IpSourceQuality>? IpSources = null)
 {
     /// <summary>Konsol metni. Yalnızca sayılar; alan adı yazılmaz.</summary>
     public string ToText()
@@ -89,6 +113,7 @@ public sealed record QualityReport(
         }
 
         AppendStaticCt(sb, c);
+        AppendIpSources(sb, c);
 
         sb.AppendLine();
         sb.AppendLine("Not: \"Yalnızca hata\" ve \"Hiç denenmedi\" grupları bilinmeyen durumdur; \"kayıt yok\" sayılmaz.");
@@ -129,6 +154,28 @@ public sealed record QualityReport(
         sb.AppendLine("  Not: Kapsama = işlenen / (işlenen + atlanan). Geride kalan kayıtlar bu orana girmez, ayrıca yazılır.");
     }
 
+    private void AppendIpSources(StringBuilder sb, CultureInfo c)
+    {
+        foreach (var s in IpSources ?? [])
+        {
+            sb.AppendLine();
+            sb.AppendLine(c, $"[{s.Source}] (IP tabanlı; IP yazılmaz)");
+            sb.AppendLine(c, $"  Satır:                  {s.Rows} (farklı IP {s.DistinctIps})");
+            sb.AppendLine(c, $"  Başarılı / boş / hata:  {s.Success} / {s.Empty} / {s.Errors}");
+            if (s.Source == CollectionSource.RipeStat)
+            {
+                sb.AppendLine(c, $"  CDN veya bulut işaretli: {s.CdnOrCloud}");
+            }
+
+            sb.AppendLine(c, $"  Tur (collection_log):   {s.Runs} (hatalı {s.ErrorRuns})");
+            sb.AppendLine(c, $"  Son sorgu:              {(s.LastQueriedAt is { } t ? t.ToString("yyyy-MM-dd HH:mm", c) + " UTC" : "-")}");
+            foreach (var (kind, count) in s.ErrorsByKind.OrderBy(k => k.Key))
+            {
+                sb.AppendLine(c, $"    {kind}: {count}");
+            }
+        }
+    }
+
     private static string FormatAge(TimeSpan age)
     {
         if (age < TimeSpan.Zero)
@@ -159,15 +206,51 @@ public sealed class QualityReportBuilder(FraudDbContext db, TimeProvider timePro
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         var snapshotCount = await db.ArchiveSnapshots.LongCountAsync(cancellationToken).ConfigureAwait(false);
 
+        // DNS: "veri var" = en az bir sorguda bilinen cevap (Success, Empty, NxDomain) alınmış alan adı.
+        var withDns = await db.DnsSnapshots.Where(x => x.Outcome != DnsOutcome.Error).Select(x => x.DomainId).Distinct()
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var dnsCount = await db.DnsSnapshots.LongCountAsync(cancellationToken).ConfigureAwait(false);
+
         var sources = new List<SourceQuality>
         {
             await BuildSourceAsync(CollectionSource.CrtSh, targets, withCertificates, certificateCount, cancellationToken).ConfigureAwait(false),
             await BuildSourceAsync(CollectionSource.WaybackCdx, targets, withSnapshots, snapshotCount, cancellationToken).ConfigureAwait(false),
+            await BuildSourceAsync(CollectionSource.Dns, targets, withDns, dnsCount, cancellationToken).ConfigureAwait(false),
         };
 
         var now = timeProvider.GetUtcNow();
         var staticCt = await BuildStaticCtAsync(now, cancellationToken).ConfigureAwait(false);
-        return new QualityReport(now, targets.Count, sources, staticCt);
+        var ripe = await db.IpAsnSnapshots
+            .Select(x => new IpRow(x.Ip.ToString(), x.Outcome, x.ErrorKind, x.CdnOrCloud != null, x.QueriedAt))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var ports = await db.PortSnapshots
+            .Select(x => new IpRow(x.Ip.ToString(), x.Outcome, x.ErrorKind, false, x.QueriedAt))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var ipSources = new List<IpSourceQuality>
+        {
+            await BuildIpSourceAsync(CollectionSource.RipeStat, ripe, cancellationToken).ConfigureAwait(false),
+            await BuildIpSourceAsync(CollectionSource.InternetDb, ports, cancellationToken).ConfigureAwait(false),
+        };
+        return new QualityReport(now, targets.Count, sources, staticCt, ipSources);
+    }
+
+    private async Task<IpSourceQuality> BuildIpSourceAsync(CollectionSource source, List<IpRow> rows, CancellationToken cancellationToken)
+    {
+        var runs = await db.CollectionLog.Where(l => l.Source == source).Select(l => l.Outcome)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var errors = rows.Where(r => r.Outcome == CollectionOutcome.Error).ToList();
+        return new IpSourceQuality(
+            source,
+            rows.Count,
+            rows.Select(r => r.Ip).Distinct(StringComparer.Ordinal).Count(),
+            rows.Count(r => r.Outcome == CollectionOutcome.Success),
+            rows.Count(r => r.Outcome == CollectionOutcome.Empty),
+            errors.Count,
+            rows.Count(r => r.CdnOrCloud),
+            runs.Count,
+            runs.Count(o => o == CollectionOutcome.Error),
+            rows.Count == 0 ? null : rows.Max(r => r.QueriedAt),
+            errors.GroupBy(r => r.ErrorKind).ToDictionary(g => g.Key, g => g.Count()));
     }
 
     /// <summary>ct_log_state, ct_candidates ve collection_log'dan log başına sayılar. Aday adları okunmaz.</summary>
@@ -270,4 +353,6 @@ public sealed class QualityReportBuilder(FraudDbContext db, TimeProvider timePro
             storedItems,
             errors.GroupBy(l => l.ErrorKind).ToDictionary(g => g.Key, g => g.Count()));
     }
+
+    private sealed record IpRow(string Ip, CollectionOutcome Outcome, CollectionErrorKind ErrorKind, bool CdnOrCloud, DateTimeOffset QueriedAt);
 }

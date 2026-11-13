@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Fraud.Collectors.Network;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -26,8 +27,10 @@ public sealed class CollectionWorker(
                 try
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
-                    var runner = scope.ServiceProvider.GetRequiredService<CollectionRunner>();
-                    await runner.RunAsync(source, force: false, stoppingToken).ConfigureAwait(false);
+                    // Alan adı kaynakları (crt.sh, Wayback, DNS) ve IP kaynakları (RIPEstat, InternetDB) ayrı çalıştırıcıdadır.
+                    // Sıra yapılandırmadaki sıradır: DNS, RIPEstat'tan önce gelmeli ki RIPEstat taze IP'leri alsın.
+                    var dispatcher = scope.ServiceProvider.GetRequiredService<CollectionDispatcher>();
+                    await dispatcher.RunAsync(source, force: false, stoppingToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

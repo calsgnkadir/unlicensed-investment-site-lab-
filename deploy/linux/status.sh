@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Canlı akışın durumu. YALNIZCA SAYI basar: ct_candidates içindeki adlar hiçbir sorguda okunmaz.
+# Canlı akışın ve günlük ağ kaydının durumu. YALNIZCA SAYI basar: ct_candidates içindeki adlar, dns_snapshots içindeki
+# cevaplar ve ip_asn_snapshots / port_snapshots içindeki IP'ler hiçbir sorguda okunmaz.
 # Log adları (ör. sycamore2026h2) yapılandırmadaki log kısa adlarıdır, alan adı değildir.
 #
 # Kullanım: ./status.sh
@@ -95,11 +96,63 @@ ORDER BY ct_log_name, adet DESC;
 SQL
 
 echo
+echo "== Ağ kaydı: DNS, son 24 saat (dns_snapshots) =="
+psql_run <<'SQL'
+SELECT resolver                                        AS cozucu,
+       transport                                       AS yol,
+       count(*)                                        AS sorgu,
+       count(*) FILTER (WHERE outcome = 'Success')     AS cevapli,
+       count(*) FILTER (WHERE outcome = 'Empty')       AS bos,
+       count(*) FILTER (WHERE outcome = 'NxDomain')    AS nxdomain,
+       count(*) FILTER (WHERE outcome = 'Error')       AS hata,
+       count(*) FILTER (WHERE block_marker)            AS engel_isareti,
+       count(*) FILTER (WHERE truncated)               AS tc_tcp_gecis,
+       round(avg(latency_ms))                          AS ort_gecikme_ms
+FROM dns_snapshots
+WHERE queried_at >= now() - interval '24 hours'
+GROUP BY resolver, transport
+ORDER BY resolver, transport;
+SQL
+
+echo
+echo "== Ağ kaydı: DNS hata türleri, son 24 saat =="
+psql_run <<'SQL'
+SELECT transport AS yol, error_kind AS hata_turu, count(*) AS adet
+FROM dns_snapshots
+WHERE outcome = 'Error' AND queried_at >= now() - interval '24 hours'
+GROUP BY transport, error_kind
+ORDER BY transport, adet DESC;
+SQL
+
+echo
+echo "== Ağ kaydı: RIPEstat ve InternetDB, son 7 gün (yalnızca sayı) =="
+psql_run <<'SQL'
+SELECT 'RipeStat'                                       AS kaynak,
+       count(*)                                         AS satir,
+       count(*) FILTER (WHERE outcome = 'Success')      AS basarili,
+       count(*) FILTER (WHERE outcome = 'Empty')        AS bos,
+       count(*) FILTER (WHERE outcome = 'Error')        AS hata,
+       count(*) FILTER (WHERE cdn_or_cloud IS NOT NULL) AS cdn_bulut,
+       max(queried_at)                                  AS son_sorgu
+FROM ip_asn_snapshots WHERE queried_at >= now() - interval '7 days'
+UNION ALL
+SELECT 'InternetDb', count(*),
+       count(*) FILTER (WHERE outcome = 'Success'),
+       count(*) FILTER (WHERE outcome = 'Empty'),
+       count(*) FILTER (WHERE outcome = 'Error'),
+       NULL,
+       max(queried_at)
+FROM port_snapshots WHERE queried_at >= now() - interval '7 days';
+SQL
+echo "(Ayrıntılı karşılaştırma: docker compose -f docker-compose.ct.yml run --rm network dns-compare)"
+
+echo
 echo "== Veritabanı boyutu =="
 psql_run <<'SQL'
 SELECT pg_size_pretty(pg_database_size(current_database()))          AS veritabani,
        pg_size_pretty(pg_total_relation_size('ct_candidates'))       AS ct_candidates,
-       pg_size_pretty(pg_total_relation_size('collection_log'))      AS collection_log;
+       pg_size_pretty(pg_total_relation_size('collection_log'))      AS collection_log,
+       pg_size_pretty(pg_total_relation_size('dns_snapshots'))       AS dns_snapshots;
 SQL
 
 echo

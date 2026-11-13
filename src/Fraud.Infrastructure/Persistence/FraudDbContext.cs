@@ -3,8 +3,10 @@ using Fraud.Domain.CertificateTransparency;
 using Fraud.Domain.Certificates;
 using Fraud.Domain.Collection;
 using Fraud.Domain.DomainNames;
+using Fraud.Domain.Network;
 using Fraud.Domain.OfficialActions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace Fraud.Infrastructure.Persistence;
 
@@ -25,6 +27,12 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
     public DbSet<CtCandidate> CtCandidates => Set<CtCandidate>();
 
     public DbSet<CtLogState> CtLogStates => Set<CtLogState>();
+
+    public DbSet<DnsSnapshot> DnsSnapshots => Set<DnsSnapshot>();
+
+    public DbSet<IpAsnSnapshot> IpAsnSnapshots => Set<IpAsnSnapshot>();
+
+    public DbSet<PortSnapshot> PortSnapshots => Set<PortSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -82,6 +90,7 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
         ConfigureCertificates(modelBuilder);
         ConfigureArchiveSnapshots(modelBuilder);
         ConfigureCertificateTransparency(modelBuilder);
+        ConfigureNetwork(modelBuilder);
     }
 
     private static void ConfigureCollectionLog(ModelBuilder modelBuilder)
@@ -281,6 +290,128 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
             e.Property(x => x.ConsecutiveFailures).HasColumnName("consecutive_failures").IsRequired();
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").IsRequired();
             e.Ignore(x => x.Coverage);
+        });
+    }
+
+    private static void ConfigureNetwork(ModelBuilder modelBuilder)
+    {
+        // DNS ölçümleri. Ağ kayıtlarında zaman, konum, kaynak (çözücü ve yol) ve hata durumu zorunludur.
+        // Dikkat: CHECK içinde NULL sonuç "geçti" sayılır; rcode için IS NOT NULL açıkça yazılır.
+        modelBuilder.Entity<DnsSnapshot>(e =>
+        {
+            e.ToTable("dns_snapshots", t =>
+            {
+                t.HasCheckConstraint("ck_dns_snapshots_error_kind", "(outcome = 'Error') = (error_kind <> 'None')");
+                t.HasCheckConstraint("ck_dns_snapshots_answers_array", "jsonb_typeof(answers) = 'array'");
+                t.HasCheckConstraint("ck_dns_snapshots_success",
+                    "outcome <> 'Success' OR (rcode IS NOT NULL AND rcode = 0 AND jsonb_array_length(answers) > 0)");
+                t.HasCheckConstraint("ck_dns_snapshots_empty",
+                    "outcome <> 'Empty' OR (rcode IS NOT NULL AND rcode = 0 AND jsonb_array_length(answers) = 0)");
+                t.HasCheckConstraint("ck_dns_snapshots_nxdomain", "outcome <> 'NxDomain' OR (rcode IS NOT NULL AND rcode = 3)");
+                // Hata hiçbir zaman cevap taşımaz; engel işareti yalnızca cevaplı sonuçta olur.
+                t.HasCheckConstraint("ck_dns_snapshots_error_no_answers",
+                    "outcome <> 'Error' OR (jsonb_array_length(answers) = 0 AND NOT block_marker)");
+                t.HasCheckConstraint("ck_dns_snapshots_block_marker", "NOT block_marker OR outcome = 'Success'");
+                t.HasCheckConstraint("ck_dns_snapshots_location", "length(btrim(location)) > 0");
+                t.HasCheckConstraint("ck_dns_snapshots_counts", "latency_ms >= 0 AND attempts >= 0");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.DomainId).HasColumnName("domain_id").IsRequired();
+            e.Property(x => x.QueriedAt).HasColumnName("queried_at").IsRequired();
+            e.Property(x => x.MeasuredOn).HasColumnName("measured_on").IsRequired();
+            e.Property(x => x.Location).HasColumnName("location").HasMaxLength(64).IsRequired();
+            e.Property(x => x.Resolver).HasColumnName("resolver").HasMaxLength(32).IsRequired();
+            e.Property(x => x.Transport).HasColumnName("transport").HasConversion<string>().HasMaxLength(8).IsRequired();
+            e.Property(x => x.QueryType).HasColumnName("query_type").HasMaxLength(16).IsRequired();
+            e.Property(x => x.Rcode).HasColumnName("rcode");
+            e.Property(x => x.Outcome).HasColumnName("outcome").HasConversion<string>().HasMaxLength(16).IsRequired();
+            e.Property(x => x.ErrorKind).HasColumnName("error_kind").HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.Answers)
+                .HasColumnName("answers")
+                .HasColumnType("jsonb")
+                .HasConversion(
+                    v => DnsAnswerJson.Serialize(v),
+                    v => DnsAnswerJson.Deserialize(v),
+                    new ValueComparer<IReadOnlyList<DnsAnswer>>(
+                        (a, b) => a!.SequenceEqual(b!),
+                        v => v.Aggregate(0, (h, x) => HashCode.Combine(h, x.GetHashCode())),
+                        v => v.ToList()))
+                .IsRequired();
+            e.Property(x => x.NegativeTtl).HasColumnName("negative_ttl");
+            e.Property(x => x.Truncated).HasColumnName("truncated").IsRequired();
+            e.Property(x => x.LatencyMs).HasColumnName("latency_ms").IsRequired();
+            e.Property(x => x.Attempts).HasColumnName("attempts").IsRequired();
+            e.Property(x => x.BlockMarker).HasColumnName("block_marker").IsRequired();
+
+            e.HasOne(x => x.Domain)
+                .WithMany()
+                .HasForeignKey(x => x.DomainId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_dns_snapshots_domains");
+
+            // Aynı gün, aynı konumdan, aynı çözücüye, aynı yoldan, aynı soru ikinci kez kaydedilmez (idempotentlik).
+            e.HasIndex(x => new { x.DomainId, x.Location, x.Resolver, x.Transport, x.QueryType, x.MeasuredOn })
+                .IsUnique()
+                .HasDatabaseName("ux_dns_snapshots_daily");
+            e.HasIndex(x => new { x.MeasuredOn, x.Transport }).HasDatabaseName("ix_dns_snapshots_day_transport");
+        });
+
+        // RIPEstat. Alan adı yok; yalnızca IP.
+        modelBuilder.Entity<IpAsnSnapshot>(e =>
+        {
+            e.ToTable("ip_asn_snapshots", t =>
+            {
+                t.HasCheckConstraint("ck_ip_asn_snapshots_error_kind", "(outcome = 'Error') = (error_kind <> 'None')");
+                t.HasCheckConstraint("ck_ip_asn_snapshots_data",
+                    "(outcome = 'Success') = (cardinality(asns) > 0 OR prefix IS NOT NULL)");
+                t.HasCheckConstraint("ck_ip_asn_snapshots_location", "length(btrim(location)) > 0");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.Ip).HasColumnName("ip").HasColumnType("inet").IsRequired();
+            e.Property(x => x.QueriedAt).HasColumnName("queried_at").IsRequired();
+            e.Property(x => x.MeasuredOn).HasColumnName("measured_on").IsRequired();
+            e.Property(x => x.Location).HasColumnName("location").HasMaxLength(64).IsRequired();
+            e.Property(x => x.Outcome).HasColumnName("outcome").HasConversion<string>().HasMaxLength(16).IsRequired();
+            e.Property(x => x.ErrorKind).HasColumnName("error_kind").HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.HttpStatus).HasColumnName("http_status");
+            e.Property(x => x.Asns).HasColumnName("asns").HasColumnType("bigint[]").IsRequired();
+            e.Property(x => x.Prefix).HasColumnName("prefix").HasMaxLength(64);
+            e.Property(x => x.CdnOrCloud).HasColumnName("cdn_or_cloud").HasMaxLength(32);
+
+            // Tekil indeks ux_ip_asn_snapshots_daily (ip, measured_on) migration'da SQL ile kurulur: EF Core, IPAddress
+            // karşılaştırılabilir olmadığı için onu modelde tekil indekse koymayı reddediyor. ON CONFLICT bu indekse dayanır.
+            e.HasIndex(x => x.QueriedAt).HasDatabaseName("ix_ip_asn_snapshots_queried_at");
+        });
+
+        // InternetDB. vulns ve hostnames sütunu bilerek YOK.
+        modelBuilder.Entity<PortSnapshot>(e =>
+        {
+            e.ToTable("port_snapshots", t =>
+            {
+                t.HasCheckConstraint("ck_port_snapshots_error_kind", "(outcome = 'Error') = (error_kind <> 'None')");
+                t.HasCheckConstraint("ck_port_snapshots_no_data_unless_success",
+                    "outcome = 'Success' OR (cardinality(ports) = 0 AND cardinality(tags) = 0 AND cardinality(cpes) = 0)");
+                t.HasCheckConstraint("ck_port_snapshots_port_range", "0 <= ALL (ports) AND 65535 >= ALL (ports)");
+                t.HasCheckConstraint("ck_port_snapshots_location", "length(btrim(location)) > 0");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.Ip).HasColumnName("ip").HasColumnType("inet").IsRequired();
+            e.Property(x => x.QueriedAt).HasColumnName("queried_at").IsRequired();
+            e.Property(x => x.MeasuredOn).HasColumnName("measured_on").IsRequired();
+            e.Property(x => x.Location).HasColumnName("location").HasMaxLength(64).IsRequired();
+            e.Property(x => x.Outcome).HasColumnName("outcome").HasConversion<string>().HasMaxLength(16).IsRequired();
+            e.Property(x => x.ErrorKind).HasColumnName("error_kind").HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.HttpStatus).HasColumnName("http_status");
+            e.Property(x => x.Ports).HasColumnName("ports").HasColumnType("integer[]").IsRequired();
+            e.Property(x => x.Tags).HasColumnName("tags").HasColumnType("text[]").IsRequired();
+            e.Property(x => x.Cpes).HasColumnName("cpes").HasColumnType("text[]").IsRequired();
+
+            // Tekil indeks ux_port_snapshots_daily (ip, measured_on) migration'da SQL ile kurulur: EF Core, IPAddress
+            // karşılaştırılabilir olmadığı için onu modelde tekil indekse koymayı reddediyor. ON CONFLICT bu indekse dayanır.
+            e.HasIndex(x => x.QueriedAt).HasDatabaseName("ix_port_snapshots_queried_at");
         });
     }
 }

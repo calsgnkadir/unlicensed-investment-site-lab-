@@ -2,6 +2,10 @@ using System.Net;
 using System.Net.Http.Headers;
 using Fraud.Collectors.Collection;
 using Fraud.Collectors.CrtSh;
+using Fraud.Collectors.Dns;
+using Fraud.Collectors.InternetDb;
+using Fraud.Collectors.Network;
+using Fraud.Collectors.RipeStat;
 using Fraud.Collectors.Http;
 using Fraud.Collectors.Quality;
 using Fraud.Collectors.StaticCt;
@@ -54,13 +58,88 @@ public static class CollectorServiceCollectionExtensions
             .ConfigurePrimaryHttpMessageHandler(CreatePrimaryHandler);
 
         AddStaticCt(services, configuration);
+        AddNetworkCollectors(services, configuration, collection.UserAgent);
 
         services.AddScoped<ISourceCollector, CrtShCollector>();
         services.AddScoped<ISourceCollector, WaybackCollector>();
         services.AddScoped<CollectionRunner>();
+        services.AddScoped<IpCollectionRunner>();
+        services.AddScoped<CollectionDispatcher>();
         services.AddScoped<QualityReportBuilder>();
+        services.AddScoped<DnsCompareReportBuilder>();
         return services;
     }
+
+    /// <summary>
+    /// DNS, RIPEstat ve InternetDB. Kayıt sırasında doğrulama yapılmaz (Dns:Location yalnızca DNS kullanılınca zorunlu);
+    /// <c>Program</c> ilgili komut başlarken <see cref="DnsOptions.Validate"/> çağırır.
+    /// </summary>
+    public static IServiceCollection AddNetworkCollectors(IServiceCollection services, IConfiguration configuration, string userAgent)
+    {
+        var dns = Bind<DnsOptions>(configuration, DnsOptions.SectionName);
+        var ripe = Bind<RipeStatOptions>(configuration, RipeStatOptions.SectionName);
+        ripe.Validate();
+        var internetDb = Bind<InternetDbOptions>(configuration, InternetDbOptions.SectionName);
+        internetDb.Validate();
+
+        services.AddSingleton(dns);
+        services.AddSingleton(ripe);
+        services.AddSingleton(internetDb);
+        services.AddSingleton(IpTargetFilter.PublicOnly);
+
+        // DNS: Bütün yollar (UDP, TCP, DoH) tek hız sınırlayıcıyı paylaşır. Ayar daha kısa bir süre verse bile
+        // (Validate çağrılmamış bir yol) saniyede 1 paket tabanı burada da uygulanır (THREAT_MODEL N6).
+        services.AddKeyedSingleton(CollectionSource.Dns,
+            (sp, _) => new RequestPacer(dns.MinQueryInterval > TimeSpan.FromSeconds(1) ? dns.MinQueryInterval : TimeSpan.FromSeconds(1), sp.GetRequiredService<TimeProvider>()));
+        services.AddHttpClient(DohHttpClientName)
+            .ConfigureHttpClient(c =>
+            {
+                c.Timeout = Timeout.InfiniteTimeSpan; // süre DohDnsTransport içinde
+                c.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => AllowedHostConnector.CreateHandler(DnsResolverCatalog.DohHosts));
+        services.AddSingleton<IDnsQueryClient>(sp => new DnsQueryClient(
+            [
+                new UdpDnsTransport(dns.Timeout),
+                new TcpDnsTransport(dns.Timeout),
+                new DohDnsTransport(sp.GetRequiredService<IHttpClientFactory>().CreateClient(DohHttpClientName), dns.Timeout),
+            ],
+            sp.GetRequiredKeyedService<RequestPacer>(CollectionSource.Dns),
+            sp.GetRequiredService<TimeProvider>(),
+            dns.MaxRetries));
+        services.AddScoped<ISourceCollector, DnsCollector>();
+
+        // RIPEstat ve InternetDB: kaynak başına hız sınırı, tek bağlantı, yalnızca kendi ana bilgisayarı.
+        services.AddKeyedSingleton(CollectionSource.RipeStat,
+            (sp, _) => new RequestPacer(ripe.MinRequestInterval, sp.GetRequiredService<TimeProvider>()));
+        services.AddKeyedSingleton(CollectionSource.InternetDb,
+            (sp, _) => new RequestPacer(internetDb.MinRequestInterval, sp.GetRequiredService<TimeProvider>()));
+
+        services.AddHttpClient<IRipeStatClient, RipeStatClient>((http, sp) => new RipeStatClient(
+                new PoliteHttpClient(http, sp.GetRequiredKeyedService<RequestPacer>(CollectionSource.RipeStat), ripe,
+                    sp.GetRequiredService<TimeProvider>()),
+                ripe))
+            .ConfigureHttpClient(c => ConfigureClient(c, userAgent))
+            .ConfigurePrimaryHttpMessageHandler(() => AllowedHostConnector.CreateHandler(new HashSet<string> { RipeStatOptions.Host }));
+
+        services.AddHttpClient<IInternetDbClient, InternetDbClient>((http, sp) => new InternetDbClient(
+                new PoliteHttpClient(http, sp.GetRequiredKeyedService<RequestPacer>(CollectionSource.InternetDb), internetDb,
+                    sp.GetRequiredService<TimeProvider>())))
+            .ConfigureHttpClient(c => ConfigureClient(c, userAgent))
+            .ConfigurePrimaryHttpMessageHandler(() => AllowedHostConnector.CreateHandler(new HashSet<string> { InternetDbOptions.Host }));
+
+        services.AddScoped<IIpSourceCollector, RipeStatCollector>();
+        services.AddScoped<IIpSourceCollector, InternetDbCollector>();
+
+        // Süreçler arası kilit (THREAT_MODEL N8). Bağlantı metni yalnızca kilit ilk kez istendiğinde okunur.
+        services.AddSingleton(_ => new NetworkSourceLock(
+            configuration.GetConnectionString(Fraud.Infrastructure.ServiceCollectionExtensions.ConnectionStringName)
+            ?? throw new InvalidOperationException("Ağ toplama kilidi için veritabanı bağlantı metni yok.")));
+        return services;
+    }
+
+    /// <summary>DoH istemcisinin HttpClientFactory adı.</summary>
+    public const string DohHttpClientName = "dns-doh";
 
     /// <summary>Static CT istemcisi, saklama filtresi, durum deposu ve metrikler.</summary>
     public static IServiceCollection AddStaticCt(IServiceCollection services, IConfiguration configuration)
