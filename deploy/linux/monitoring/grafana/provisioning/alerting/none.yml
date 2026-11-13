@@ -1,0 +1,3 @@
+# Grafana uyarı ayarı: kullanılmıyor. Uyarılar Prometheus kurallarındadır (monitoring/prometheus/rules).
+# Dosya, Grafana açılışta bu klasörü bulamayınca hata satırı yazmasın diye var.
+apiVersion: 1

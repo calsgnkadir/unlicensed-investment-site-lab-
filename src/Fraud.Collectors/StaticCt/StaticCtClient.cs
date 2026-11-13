@@ -138,7 +138,9 @@ public interface IStaticCtClientFactory
     IStaticCtClient Create(CtLogOptions log);
 }
 
-public sealed class StaticCtClientFactory(IHttpClientFactory httpClientFactory, StaticCtOptions options, TimeProvider timeProvider)
+/// <param name="metrics">İsteğe bağlı: Verilirse her logun HTTP tekrar denemesi ve okunan baytı sayılır.</param>
+public sealed class StaticCtClientFactory(
+    IHttpClientFactory httpClientFactory, StaticCtOptions options, TimeProvider timeProvider, StaticCtMetrics? metrics = null)
     : IStaticCtClientFactory, IDisposable
 {
     public const string HttpClientName = "StaticCt";
@@ -150,7 +152,8 @@ public sealed class StaticCtClientFactory(IHttpClientFactory httpClientFactory, 
         ArgumentNullException.ThrowIfNull(log);
         var (pacer, key) = _perLog.GetOrAdd(log.Name, _ =>
             (new RequestPacer(options.MinRequestInterval, timeProvider), CtLogKey.Create(log.Origin, log.PublicKey)));
-        var http = new PoliteHttpClient(httpClientFactory.CreateClient(HttpClientName), pacer, options, timeProvider);
+        var http = new PoliteHttpClient(httpClientFactory.CreateClient(HttpClientName), pacer, options, timeProvider,
+            metrics?.HttpObserver(log.Name));
         return new StaticCtClient(http, log, key, options.MaxResponseBytes);
     }
 

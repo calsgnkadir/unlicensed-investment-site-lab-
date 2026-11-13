@@ -1,4 +1,5 @@
 using Fraud.Infrastructure;
+using Fraud.Infrastructure.Observability;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddFraudInfrastructure(builder.Configuration);
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<FraudDbContext>("database", tags: ["ready"]);
+
+// Prometheus metrikleri ayrı iç portta (varsayılan 9464, kapalı). Yalnızca istek süresi (rota şablonu, yöntem, durum
+// kodu) ve çalışma zamanı metrikleri; istek adresi ve sorgu metni etikete girmez (MetricLabels izin listesi).
+var metricsOptions = new MetricsOptions();
+builder.Configuration.GetSection(MetricsOptions.SectionName).Bind(metricsOptions);
+builder.Services.AddFraudMetrics(metricsOptions, "Microsoft.AspNetCore.Hosting");
 
 var app = builder.Build();
 

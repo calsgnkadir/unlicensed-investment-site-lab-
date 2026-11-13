@@ -1,0 +1,33 @@
+# Port denetimi: Bu makinede (WSL Ubuntu + Docker Engine) dinlemesi BEKLENEN soketler.
+# port-audit servisi /proc/net/{tcp,tcp6,udp,udp6} tablolarını okur ve bu listeyle karşılaştırır.
+# Listede olmayan her dinleyici "beklenmeyen" sayılır; 2 dakika sürerse UnexpectedOpenPort uyarısı çıkar.
+#
+# Biçim (satır başına bir veya virgülle ayrılmış birkaç kayıt, # sonrası yorum):
+#   tcp/PORT              her adreste
+#   tcp/PORT@loopback     yalnızca 127.0.0.1 / ::1 (0.0.0.0'da açılırsa beklenmeyen sayılır)
+#   tcp/PORT@local        joker adres (0.0.0.0, ::) dışında herhangi bir adreste
+#   tcp/A-B@loopback      aralık (aralık hiçbir zaman "eksik" sayılmaz)
+# Bu dosya değişince port-audit servisi bir sonraki denetimde (30 sn) yeni listeyi okur; yeniden başlatma gerekmez.
+# Değişikliği bilerek yapın ve commit mesajında nedenini yazın: Bu dosya makinenin "açık kapı" listesidir.
+
+# --- Bu kurulumun kendi portları ---
+# Grafana. Docker, yayımlanan portu docker-proxy süreciyle 127.0.0.1:53000'de dinler. .env içinde GRAFANA_PORT
+# değiştirilirse burası da değişmeli. Docker userland-proxy kapalıysa (daemon.json "userland-proxy": false) bu soket
+# görünmez ve "eksik" olarak raporlanır; bu durumda satırı silin.
+tcp/53000@loopback
+
+# port-audit host ağında hiçbir port dinlemez (sonucu dosyaya yazar, port-audit-exporter iç ağda sunar).
+
+# --- WSL ve Ubuntu'nun kendi dinleyicileri ---
+# DNS: WSL DNS tüneli (10.255.255.254:53, /init) veya systemd-resolved (127.0.0.53:53 ve 127.0.0.54:53).
+# Hangisi açıksa o görünür; ikisi de joker adreste değildir. Hiçbiri yoksa "eksik" bilgi olarak görünür, uyarı değildir.
+udp/53@local
+tcp/53@local
+
+# --- Gerekirse açın (varsayılan kapalı) ---
+# SSH (WSL'de genelde yok; ayrı bir Linux sunucuda varsa):
+# tcp/22
+# chrony komut portu (Ubuntu 25.10 ve sonrası, yalnızca loopback):
+# udp/323@loopback
+# containerd CRI akış sunucusu loopback'te rastgele port açarsa (Docker CE'de CRI genelde kapalıdır):
+# tcp/32768-60999@loopback

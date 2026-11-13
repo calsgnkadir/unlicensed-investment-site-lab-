@@ -60,9 +60,34 @@ jobs:
       - name: Check Linux deploy package
         env:
           POSTGRES_PASSWORD: ci-only-not-a-secret
+          GRAFANA_ADMIN_PASSWORD: ci-only-not-a-secret
         run: |
           docker compose -f deploy/linux/docker-compose.ct.yml config -q
+          docker compose -f deploy/linux/docker-compose.ct.yml -f deploy/linux/docker-compose.monitoring.yml config -q
+          docker compose -f docker-compose.yml --profile monitoring config -q
           shellcheck deploy/linux/*.sh
+          # Windows bildirim betiği: yalnızca ayrıştırma denetimi (çalıştırılmaz; WSL ve bildirim API'si Windows'a özgü).
+          pwsh -NoProfile -Command '$e = $null; $t = $null; [void][System.Management.Automation.Language.Parser]::ParseFile("deploy/windows/fraud-lab-check.ps1", [ref]$t, [ref]$e); if ($e.Count -gt 0) { $e | ForEach-Object { $_.Message }; exit 1 }'
+
+      # İzleme ayarı: Prometheus ayarı ve uyarı kuralları geçerli mi, uyarı birim testleri (CtFollowerStalled,
+      # UnexpectedOpenPort, DnsErrorRateHigh ...) geçiyor mu, Grafana paneli geçerli JSON mu.
+      # promtool, kurulumdaki Prometheus imajının aynısından (sürüm + özet) çalışır; ağa çıkmaz.
+      - name: Check monitoring config
+        env:
+          PROMETHEUS_IMAGE: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+        run: |
+          docker run --rm --network none -v "$PWD/deploy/linux/monitoring/prometheus:/etc/prometheus:ro" \
+            --entrypoint /bin/promtool "$PROMETHEUS_IMAGE" check config /etc/prometheus/prometheus.yml
+          docker run --rm --network none -v "$PWD/deploy/linux/monitoring/prometheus:/etc/prometheus:ro" \
+            -w /etc/prometheus/tests --entrypoint /bin/promtool "$PROMETHEUS_IMAGE" test rules fraud-lab.test.yml
+          docker run --rm --network none -v "$PWD/deploy/dev/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/deploy/linux/monitoring/prometheus/rules:/etc/prometheus/rules:ro" \
+            --entrypoint /bin/promtool "$PROMETHEUS_IMAGE" check config /etc/prometheus/prometheus.yml
+          for f in deploy/linux/monitoring/grafana/dashboards/*.json; do
+            python3 -m json.tool "$f" > /dev/null
+            # Panel yalnızca sabit uid'li veri kaynağını kullanmalı (provisioning/datasources/prometheus.yml).
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["uid"]; assert all(t["datasource"]["uid"]=="prometheus" for p in d["panels"] for t in p.get("targets",[]))' "$f"
+          done
 
       - name: Build collectors image
         run: docker build --file src/Fraud.Collectors/Dockerfile --tag fraud-lab-collectors:ci .

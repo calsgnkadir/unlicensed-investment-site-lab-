@@ -4,6 +4,7 @@ using Fraud.Collectors.Collection;
 using Fraud.Collectors.CrtSh;
 using Fraud.Collectors.Dns;
 using Fraud.Collectors.InternetDb;
+using Fraud.Collectors.Monitoring;
 using Fraud.Collectors.Network;
 using Fraud.Collectors.RipeStat;
 using Fraud.Collectors.Http;
@@ -35,6 +36,11 @@ public static class CollectorServiceCollectionExtensions
         services.AddSingleton(wayback);
         services.AddSingleton(worker);
 
+        // Metrikler: tek örnek, bütün turlar aynı sayaçlara yazar. Prometheus'a aktarım ayrıca açılır (Metrics:Enabled).
+        services.AddSingleton(sp => new CollectionMetrics(
+            sp.GetService<System.Diagnostics.Metrics.IMeterFactory>(), sp.GetService<TimeProvider>()));
+        services.AddSingleton(sp => new DnsMetrics(sp.GetService<System.Diagnostics.Metrics.IMeterFactory>()));
+
         // Kaynak başına tek hız sınırlayıcı: O kaynağa giden bütün istekler (tekrar denemeler dahil) aynı sırayı bekler.
         services.AddKeyedSingleton(CollectionSource.CrtSh,
             (sp, _) => new RequestPacer(crtSh.MinRequestInterval, sp.GetRequiredService<TimeProvider>()));
@@ -46,13 +52,13 @@ public static class CollectorServiceCollectionExtensions
 
         services.AddHttpClient<ICrtShClient, CrtShClient>((http, sp) => new CrtShClient(
                 new PoliteHttpClient(http, sp.GetRequiredKeyedService<RequestPacer>(CollectionSource.CrtSh), crtSh,
-                    sp.GetRequiredService<TimeProvider>())))
+                    sp.GetRequiredService<TimeProvider>(), Observer(sp, CollectionSource.CrtSh))))
             .ConfigureHttpClient(c => ConfigureClient(c, collection.UserAgent))
             .ConfigurePrimaryHttpMessageHandler(CreatePrimaryHandler);
 
         services.AddHttpClient<IWaybackCdxClient, WaybackCdxClient>((http, sp) => new WaybackCdxClient(
                 new PoliteHttpClient(http, sp.GetRequiredKeyedService<RequestPacer>(CollectionSource.WaybackCdx), wayback,
-                    sp.GetRequiredService<TimeProvider>()),
+                    sp.GetRequiredService<TimeProvider>(), Observer(sp, CollectionSource.WaybackCdx)),
                 wayback))
             .ConfigureHttpClient(c => ConfigureClient(c, collection.UserAgent))
             .ConfigurePrimaryHttpMessageHandler(CreatePrimaryHandler);
@@ -117,14 +123,14 @@ public static class CollectorServiceCollectionExtensions
 
         services.AddHttpClient<IRipeStatClient, RipeStatClient>((http, sp) => new RipeStatClient(
                 new PoliteHttpClient(http, sp.GetRequiredKeyedService<RequestPacer>(CollectionSource.RipeStat), ripe,
-                    sp.GetRequiredService<TimeProvider>()),
+                    sp.GetRequiredService<TimeProvider>(), Observer(sp, CollectionSource.RipeStat)),
                 ripe))
             .ConfigureHttpClient(c => ConfigureClient(c, userAgent))
             .ConfigurePrimaryHttpMessageHandler(() => AllowedHostConnector.CreateHandler(new HashSet<string> { RipeStatOptions.Host }));
 
         services.AddHttpClient<IInternetDbClient, InternetDbClient>((http, sp) => new InternetDbClient(
                 new PoliteHttpClient(http, sp.GetRequiredKeyedService<RequestPacer>(CollectionSource.InternetDb), internetDb,
-                    sp.GetRequiredService<TimeProvider>())))
+                    sp.GetRequiredService<TimeProvider>(), Observer(sp, CollectionSource.InternetDb))))
             .ConfigureHttpClient(c => ConfigureClient(c, userAgent))
             .ConfigurePrimaryHttpMessageHandler(() => AllowedHostConnector.CreateHandler(new HashSet<string> { InternetDbOptions.Host }));
 
@@ -151,7 +157,8 @@ public static class CollectorServiceCollectionExtensions
 
         services.AddSingleton(staticCt);
         services.AddSingleton<ICandidateFilter>(filter);
-        services.AddSingleton(sp => new StaticCtMetrics(sp.GetService<System.Diagnostics.Metrics.IMeterFactory>()));
+        services.AddSingleton(sp => new StaticCtMetrics(
+            sp.GetService<System.Diagnostics.Metrics.IMeterFactory>(), sp.GetService<TimeProvider>()));
         services.AddSingleton<IStaticCtClientFactory, StaticCtClientFactory>();
         services.AddScoped<ICtStateStore, EfCtStateStore>();
 
@@ -185,6 +192,10 @@ public static class CollectorServiceCollectionExtensions
         ConnectTimeout = TimeSpan.FromSeconds(30),
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
     };
+
+    /// <summary>Kaynağın HTTP tekrar denemelerini sayan gözlemci (metrikler kayıtlı değilse yok).</summary>
+    private static IHttpFetchObserver? Observer(IServiceProvider sp, CollectionSource source) =>
+        sp.GetService<CollectionMetrics>()?.HttpObserver(source);
 
     private static T Bind<T>(IConfiguration configuration, string section)
         where T : new()

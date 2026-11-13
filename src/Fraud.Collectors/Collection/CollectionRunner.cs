@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Fraud.Collectors.Monitoring;
 using Fraud.Collectors.Network;
 using Fraud.Domain.Collection;
 using Fraud.Domain.Network;
@@ -29,7 +30,8 @@ public sealed class CollectionRunner(
     IEnumerable<ISourceCollector> collectors,
     CollectionOptions options,
     TimeProvider timeProvider,
-    ILogger<CollectionRunner> logger)
+    ILogger<CollectionRunner> logger,
+    CollectionMetrics? metrics = null)
 {
     [SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "Bir alan adının beklenmeyen hatası turun geri kalanını durdurmamalı; yalnızca alan adı kimliği ve hata türü loglanır.")]
@@ -101,6 +103,7 @@ public sealed class CollectionRunner(
                 // İstisna nesnesi ve mesajı loglanmaz (alan adı veya çekilen veri içerebilir).
                 failed++;
                 CollectorLog.TargetFailed(logger, source, target.DomainId, CollectionErrorKind.Unexpected, null, 0);
+                metrics?.TargetFailed(source, CollectionErrorKind.Unexpected);
                 continue;
             }
 
@@ -116,6 +119,7 @@ public sealed class CollectionRunner(
                 default:
                     failed++;
                     CollectorLog.TargetFailed(logger, source, target.DomainId, entry.ErrorKind, entry.HttpStatus, entry.Attempts);
+                    metrics?.TargetFailed(source, entry.ErrorKind);
                     break;
             }
 

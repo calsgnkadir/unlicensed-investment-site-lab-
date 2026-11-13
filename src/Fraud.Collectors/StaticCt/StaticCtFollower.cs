@@ -94,7 +94,7 @@ public sealed class StaticCtFollower(
 
         var fullEnd = checkpoint.Size / TilePath.Width * TilePath.Width;
         var rangeStart = state.NextIndex;
-        metrics.Backlog(log.Name, checkpoint.Size - rangeStart);
+        metrics.Position(log.Name, checkpoint.Size, rangeStart);
         if (rangeStart >= fullEnd)
         {
             if (isNew)
@@ -102,6 +102,8 @@ public sealed class StaticCtFollower(
                 await store.CommitAsync(state, isNew: true, [], _ => [], CancellationToken.None).ConfigureAwait(false);
             }
 
+            // Yetişmiş: checkpoint doğrulandı, yeni tam tile yok. Bu da hatasız bir turdur (durma uyarısı için).
+            metrics.BatchSucceeded(log.Name, advanced: false, newestEntry: null);
             return new CtBatchResult(CtBatchStatus.CaughtUp, 0, 0, 0, checkpoint.Size - rangeStart);
         }
 
@@ -239,7 +241,8 @@ public sealed class StaticCtFollower(
         }
 
         var backlog = checkpoint.Size - state.NextIndex;
-        metrics.Backlog(log.Name, backlog);
+        metrics.Position(log.Name, checkpoint.Size, state.NextIndex);
+        metrics.BatchSucceeded(log.Name, advanced: true, newest > DateTimeOffset.MinValue ? newest : null);
         StaticCtLog.RangeCommitted(logger, logNumber, rangeStart, processedEnd, examined, unreadable, newCandidates, backlog);
         if (failure is not null)
         {
@@ -298,7 +301,9 @@ public sealed class StaticCtFollower(
                 {
                     try
                     {
+                        var fetchStarted = timeProvider.GetTimestamp();
                         var fetch = await client.GetDataTileAsync(tileIndex, cancellationToken).ConfigureAwait(false);
+                        metrics.TileFetched(log.Name, timeProvider.GetElapsedTime(fetchStarted));
                         if (!fetch.IsSuccess)
                         {
                             Interlocked.Exchange(ref failed, 1);
@@ -365,6 +370,8 @@ public sealed class StaticCtFollower(
         {
             metrics.Skipped(log.Name, skipped);
         }
+
+        metrics.Position(log.Name, run.Checkpoint.Size, run.State.NextIndex);
 
         LogFailure(kind, httpStatus, run.RangeStart, attemptedEnd, run.State.ConsecutiveFailures, skipped);
         return new CtBatchResult(CtBatchStatus.Failed, 0, skipped, 0, run.Checkpoint.Size - run.State.NextIndex);

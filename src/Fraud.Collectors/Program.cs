@@ -1,7 +1,9 @@
 using Fraud.Collectors;
 using Fraud.Collectors.Collection;
 using Fraud.Collectors.Dns;
+using Fraud.Collectors.Monitoring;
 using Fraud.Collectors.Network;
+using Fraud.Collectors.PortAudit;
 using Fraud.Collectors.OfficialActions;
 using Fraud.Collectors.Quality;
 using Fraud.Collectors.Http;
@@ -11,6 +13,7 @@ using Fraud.Domain.Collection;
 using Fraud.Domain.Fetching;
 using Fraud.Infrastructure;
 using Fraud.Infrastructure.Fetching;
+using Fraud.Infrastructure.Observability;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +34,8 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- migrate
 //   dotnet run --project src/Fraud.Collectors -- ct-sample --tiles 3 [--log <ad>] [--max-requests 5] [--verify-root true]
 //   dotnet run --project src/Fraud.Collectors -- archive-sample [--count 20] [--seed <metin>] [--out data/private/phase0/arsiv_icerik]
+//   dotnet run --project src/Fraud.Collectors -- port-audit [--once true]                (yalnızca Linux; veritabanı gerekmez)
+//   dotnet run --project src/Fraud.Collectors -- port-audit-exporter                     (port-audit durum dosyasını sunar)
 // Bağlantı metni: ConnectionStrings__FraudDb ortam değişkeni veya user-secrets.
 // Çıkış kodu: 0 = temiz, 2 = reddedilen/çakışan satır veya hatalı toplama var, 1 = hata, 64 = hatalı kullanım,
 //             75 = ağ kaynağını başka bir süreç topluyor (kilit alınamadı, sorgu atılmadı).
@@ -40,12 +45,12 @@ const string Usage =
     "collect-wayback [--force true] | collect-dns [--force true] | collect-ripestat [--force true] | " +
     "collect-internetdb [--force true] | dns-compare [--day YYYY-AA-GG] | worker | quality-report | ct-follow | migrate | " +
     "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true] | " +
-    "archive-sample [--count N] [--seed <metin>] [--out <klasör>]>";
+    "archive-sample [--count N] [--seed <metin>] [--out <klasör>] | port-audit [--once true] | port-audit-exporter>";
 
 var command = args.Length > 0 ? args[0] : string.Empty;
 if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"
     or "ct-follow" or "ct-sample" or "migrate" or "archive-sample"
-    or "collect-dns" or "collect-ripestat" or "collect-internetdb" or "dns-compare"))
+    or "collect-dns" or "collect-ripestat" or "collect-internetdb" or "dns-compare" or "port-audit" or "port-audit-exporter"))
 {
     await Console.Error.WriteLineAsync(Usage).ConfigureAwait(false);
     return 64;
@@ -55,6 +60,12 @@ if (command == "ct-sample")
 {
     // Veritabanı gerekmez: Hiçbir şey yazılmaz, yalnızca sayılar basılır.
     return await CtSampleCommand.RunAsync(args.Skip(1).ToArray()).ConfigureAwait(false);
+}
+
+if (command is "port-audit" or "port-audit-exporter")
+{
+    // Veritabanı ve dış ağ gerekmez: Yalnızca bu makinenin soket tablolarını okur (bkz. PortAuditor).
+    return await RunPortAuditAsync(args.Skip(1).ToArray(), exporter: command == "port-audit-exporter").ConfigureAwait(false);
 }
 
 // appsettings.json programın yanından okunur; CSV yolu ise çalıştırılan klasöre göre çözülür.
@@ -90,6 +101,23 @@ if (command is "collect-dns" or "dns-compare"
 
 builder.Services.AddScoped<OfficialActionCsvParser>();
 builder.Services.AddScoped<OfficialActionImporter>();
+
+// Prometheus metrikleri yalnızca uzun çalışan komutlarda açılır; tek seferlik komutlar port açmaz.
+if (command is "worker" or "ct-follow")
+{
+    var metricsOptions = new MetricsOptions();
+    builder.Configuration.GetSection(MetricsOptions.SectionName).Bind(metricsOptions);
+    builder.Services.AddFraudMetrics(metricsOptions,
+        StaticCtMetrics.MeterName, CollectionMetrics.MeterName, DnsMetrics.MeterName, DataFreshnessMonitor.MeterName);
+
+    var freshness = new FreshnessOptions();
+    builder.Configuration.GetSection(FreshnessOptions.SectionName).Bind(freshness);
+    if (freshness.Enabled)
+    {
+        builder.Services.AddSingleton(freshness);
+        builder.Services.AddHostedService<DataFreshnessMonitor>();
+    }
+}
 
 if (command == "worker")
 {
@@ -224,6 +252,83 @@ switch (command)
 
     default:
         return await ImportOfficialActionsAsync(host.Services, importOptions, logger).ConfigureAwait(false);
+}
+
+static async Task<int> RunPortAuditAsync(string[] commandArgs, bool exporter)
+{
+    var auditBuilder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+    {
+        Args = commandArgs,
+        ContentRootPath = AppContext.BaseDirectory,
+    });
+
+    var auditOptions = new PortAuditOptions();
+    auditBuilder.Configuration.GetSection(PortAuditOptions.SectionName).Bind(auditOptions);
+    auditOptions.Validate();
+
+    auditBuilder.Services.AddSingleton(auditOptions);
+    auditBuilder.Services.AddSingleton(TimeProvider.System);
+    auditBuilder.Services.AddSingleton(sp => new PortAuditMetrics(sp.GetService<System.Diagnostics.Metrics.IMeterFactory>()));
+    auditBuilder.Services.AddSingleton<PortAuditor>();
+    auditBuilder.Services.AddSingleton<PortAuditWorker>();
+
+    if (exporter)
+    {
+        // Yalnızca durum dosyasını okur ve iç ağda sunar; /proc ve beklenen liste okunmaz.
+        if (string.IsNullOrWhiteSpace(auditOptions.StateFile))
+        {
+            await Console.Error.WriteLineAsync("PortAudit:StateFile tanımlı olmalı.").ConfigureAwait(false);
+            return 64;
+        }
+
+        var exporterMetrics = new MetricsOptions();
+        auditBuilder.Configuration.GetSection(MetricsOptions.SectionName).Bind(exporterMetrics);
+        auditBuilder.Services.AddFraudMetrics(exporterMetrics, PortAuditMetrics.MeterName);
+        auditBuilder.Services.AddHostedService<PortAuditExporterWorker>();
+        using var exporterHost = auditBuilder.Build();
+        await exporterHost.RunAsync().ConfigureAwait(false);
+        return 0;
+    }
+
+    var once = auditBuilder.Configuration.GetValue("once", false);
+    if (!once)
+    {
+        // Linux kurulumunda Metrics kapalıdır (host ağında port açılmaz, sonuç StateFile'a yazılır); açılırsa yine çalışır.
+        var metricsOptions = new MetricsOptions();
+        auditBuilder.Configuration.GetSection(MetricsOptions.SectionName).Bind(metricsOptions);
+        auditBuilder.Services.AddFraudMetrics(metricsOptions, PortAuditMetrics.MeterName);
+        auditBuilder.Services.AddHostedService(sp => sp.GetRequiredService<PortAuditWorker>());
+    }
+
+    using var auditHost = auditBuilder.Build();
+    if (!once)
+    {
+        await auditHost.RunAsync().ConfigureAwait(false);
+        return 0;
+    }
+
+    // Elle kontrol: yalnızca sayı, protokol, port ve kapsam basar (adres yok). Çıkış: 0 temiz, 3 fark var, 1 okunamadı.
+    var result = auditHost.Services.GetRequiredService<PortAuditWorker>().RunOnce();
+    if (result is null)
+    {
+        await Console.Error.WriteLineAsync("Port denetimi tamamlanamadı (dosya okunamadı veya beklenen liste geçersiz).").ConfigureAwait(false);
+        return 1;
+    }
+
+    var c = System.Globalization.CultureInfo.InvariantCulture;
+    await Console.Out.WriteLineAsync(string.Create(c,
+        $"Dinleyici: {result.Listeners.Count}, beklenmeyen: {result.Unexpected.Count}, eksik: {result.Missing.Count}")).ConfigureAwait(false);
+    foreach (var u in result.Unexpected)
+    {
+        await Console.Out.WriteLineAsync(string.Create(c, $"  beklenmeyen: {u.Protocol} {u.Port} ({u.Scope})")).ConfigureAwait(false);
+    }
+
+    foreach (var m in result.Missing)
+    {
+        await Console.Out.WriteLineAsync(string.Create(c, $"  eksik: {m}")).ConfigureAwait(false);
+    }
+
+    return result.Unexpected.Count == 0 ? 0 : 3;
 }
 
 static async Task<int> ImportOfficialActionsAsync(IServiceProvider services, OfficialActionImportOptions options, ILogger logger)

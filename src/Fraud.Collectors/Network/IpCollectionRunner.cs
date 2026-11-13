@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Fraud.Collectors.Collection;
+using Fraud.Collectors.Dns;
+using Fraud.Collectors.Monitoring;
 using Fraud.Domain.Collection;
 using Fraud.Domain.Network;
 using Fraud.Infrastructure.Fetching;
@@ -33,7 +35,8 @@ public sealed class IpCollectionRunner(
     CollectionOptions options,
     IpTargetFilter filter,
     TimeProvider timeProvider,
-    ILogger<IpCollectionRunner> logger)
+    ILogger<IpCollectionRunner> logger,
+    CollectionMetrics? metrics = null)
 {
     public Task<CollectionRunSummary> RunAsync(CollectionSource source, bool force, CancellationToken cancellationToken) =>
         RunAsync(source, force, null, cancellationToken);
@@ -112,6 +115,7 @@ public sealed class IpCollectionRunner(
                 default:
                     failed++;
                     errors[result.ErrorKind] = errors.GetValueOrDefault(result.ErrorKind) + 1;
+                    metrics?.TargetFailed(source, result.ErrorKind);
                     break;
             }
         }
@@ -147,13 +151,29 @@ public sealed class IpCollectionRunner(
 /// saniyede 2 paket gönderirdi (THREAT_MODEL N8). Bu yüzden kaynak başına bir PostgreSQL advisory lock
 /// (<see cref="NetworkSourceLock"/>) alınır; alınamazsa hiç sorgu atılmadan çıkılır.
 /// </remarks>
+/// <param name="metrics">İsteğe bağlı: tur sonucu, zamanı ve süresi.</param>
+/// <param name="dnsMetrics">İsteğe bağlı: DNS "son tur" göstergeleri ve UDP-DoH karşılaştırması.</param>
+/// <param name="dnsCompare">DNS turundan sonra karşılaştırmayı hesaplar (veritabanından, sorgu atmaz).</param>
+/// <param name="dnsOptions">Karşılaştırmanın konumu (<see cref="DnsOptions.Location"/>).</param>
 public sealed class CollectionDispatcher(
     CollectionRunner domainRunner,
     IpCollectionRunner ipRunner,
     NetworkSourceLock sourceLock,
-    ILogger<CollectionDispatcher> logger)
+    ILogger<CollectionDispatcher> logger,
+    CollectionMetrics? metrics = null,
+    DnsMetrics? dnsMetrics = null,
+    DnsCompareReportBuilder? dnsCompare = null,
+    DnsOptions? dnsOptions = null)
 {
     public async Task<CollectionRunSummary> RunAsync(CollectionSource source, bool force, CancellationToken cancellationToken)
+    {
+        metrics?.RunStarted(source);
+        var summary = await RunCoreAsync(source, force, cancellationToken).ConfigureAwait(false);
+        metrics?.RunFinished(summary);
+        return summary;
+    }
+
+    private async Task<CollectionRunSummary> RunCoreAsync(CollectionSource source, bool force, CancellationToken cancellationToken)
     {
         if (source is CollectionSource.CrtSh or CollectionSource.WaybackCdx)
         {
@@ -175,9 +195,44 @@ public sealed class CollectionDispatcher(
         await using (held.ConfigureAwait(false))
         {
             // Kilit tur boyunca her hedeften önce yeniden denetlenir (bağlantı koparsa kilit gider).
-            return source == CollectionSource.Dns
-                ? await domainRunner.RunAsync(source, force, held, cancellationToken).ConfigureAwait(false)
-                : await ipRunner.RunAsync(source, force, held, cancellationToken).ConfigureAwait(false);
+            if (source != CollectionSource.Dns)
+            {
+                return await ipRunner.RunAsync(source, force, held, cancellationToken).ConfigureAwait(false);
+            }
+
+            dnsMetrics?.RunStarted();
+            var summary = await domainRunner.RunAsync(source, force, held, cancellationToken).ConfigureAwait(false);
+            dnsMetrics?.RunFinished(summary.Cancelled);
+            await UpdateDnsComparisonAsync(summary, cancellationToken).ConfigureAwait(false);
+            return summary;
+        }
+    }
+
+    /// <summary>
+    /// Son ölçüm gününün UDP-DoH karşılaştırmasını metriğe yazar (yalnızca sayılar). Veritabanını okur, sorgu atmaz.
+    /// Hata turu bozmasın diye yalnızca istisna türü loglanır.
+    /// </summary>
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Metrik hesabı toplama turunun sonucunu değiştirmemeli; yalnızca istisna türü loglanır.")]
+    private async Task UpdateDnsComparisonAsync(CollectionRunSummary summary, CancellationToken cancellationToken)
+    {
+        if (dnsMetrics is null || dnsCompare is null || summary.Cancelled || string.IsNullOrWhiteSpace(dnsOptions?.Location))
+        {
+            return;
+        }
+
+        try
+        {
+            var report = await dnsCompare.BuildAsync(dnsOptions.Location, day: null, cancellationToken).ConfigureAwait(false);
+            dnsMetrics.Comparison(report.Resolvers);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Kapanış: karşılaştırma bir sonraki turda hesaplanır.
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            CollectorLog.RunCrashed(logger, CollectionSource.Dns, ex.GetType().Name);
         }
     }
 }

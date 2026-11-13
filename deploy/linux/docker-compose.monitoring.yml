@@ -1,0 +1,197 @@
+# İzleme (Hafta 5): Prometheus, Grafana ve kendi makinemizin port denetimi.
+#
+# Tek başına çalışmaz; CT dosyasıyla birlikte kullanılır (aynı proje, aynı "metrics" ağı):
+#   docker compose -f docker-compose.ct.yml -f docker-compose.monitoring.yml up -d
+# install.sh ve status.sh bunu kendisi yapar. .env içindeki COMPOSE_FILE satırı sayesinde bu klasörde -f yazmadan
+# "docker compose ps" da iki dosyayı birlikte okur.
+#
+# Neden ayrı dosya: docker-compose.ct.yml veri tarafıdır ve kuralı "hiç port yayımlanmaz, host ağı kullanılmaz"dır
+# (tests/Fraud.Security.Tests bunu denetler). İzleme iki bilinçli istisna getirir, ikisi de yalnızca bu dosyada:
+#   1. grafana: 127.0.0.1:53000 (yalnızca bu makine; WSL bunu Windows'taki localhost'a iletir, LAN'a açılmaz).
+#   2. port-audit: network_mode: host. Host'un soket tablosunu (/proc/net) görebilmesi için host ağ ad alanında
+#      olmalı. Hiçbir yere bağlanmaz, paket göndermez ve HİÇBİR PORT DİNLEMEZ (THREAT_MODEL M1): Sonucu paylaşılan
+#      "port_audit_state" birimine dosya olarak yazar; port-audit-exporter (iç ağda, host ağında değil) okuyup sunar.
+# Prometheus hiçbir port yayımlamaz.
+#
+# İmajlar sürüm VE özet (sha256) ile sabittir: Aynı etiket sonradan başka içerikle yayımlanırsa çekilmez.
+# Güncelleme: docker buildx imagetools inspect prom/prometheus:vX.Y.Z  (yalnızca kayıt defterini sorar), "Digest"
+# satırını buraya ve .github/workflows/ci.yml içindeki promtool adımına yazın; ayrı bir commit'te.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  logging: *logging
+
+services:
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    restart: unless-stopped
+    # İmajdaki nobody kullanıcısı. Yeni adlandırılmış birim /prometheus sahipliğini imajdan alır.
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # 30 gün sakla; disk 2 GB'ı geçerse en eskiler önce silinir (hangisi önce gelirse).
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=2GB
+      - --web.listen-address=:9090
+      # Yönetim API'si (silme, anlık görüntü) ve yeniden yükleme ucu kapalı.
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      # metrics: ct-follow, network ve port-audit-exporter, hepsi 9464 (iç ağ, dışarı çıkış yok).
+      - metrics
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:13.2.6@sha256:b21409d7951ddcfd63a4b49083e4ef2cc35bc1437d071813bf82bfb238b00bca
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    # Parola ortam değişkeninde değil, salt okunur bağlanan dosyada (docker inspect'te görünmez). install.sh üretir.
+    # Dosya yoksa veya boşsa Grafana hiç açılmaz; varsayılan "admin/admin" parolası hiçbir durumda kullanılmaz.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - '[ -f "$$GF_SECURITY_ADMIN_PASSWORD__FILE" ] && [ -s "$$GF_SECURITY_ADMIN_PASSWORD__FILE" ] || { echo "Grafana parola dosyası yok veya boş (install.sh üretir)." >&2; exit 1; }; exec /run.sh'
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      # Yalnızca ilk açılışta (boş veritabanı) uygulanır; sonra değiştirmek için README "Grafana" bölümü.
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      # Anonim erişim ve kayıt kapalı.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      # Dışarıya istek yok: güncelleme denetimi, kullanım raporu, haber akışı, Gravatar resmi, dış anlık görüntü.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+      # Grafana 12+ açılışta grafana.com'dan eklenti indirmeye/güncellemeye çalışır; kapalı (imajdaki eklentiler yeter).
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      # Tarayıcı tarafı sertleştirme.
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SECURITY_CONTENT_SECURITY_POLICY: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "false"
+      # Panelde HTML/JS çalıştıran metin paneli kapalı (yalnızca markdown).
+      GF_PANELS_DISABLE_SANITIZE_HTML: "false"
+      GF_LOG_MODE: console
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/fraud-lab.json
+    ports:
+      # Yalnızca bu makinenin loopback adresi. LAN'dan erişilemez. Port değişirse port-audit.expected da değişmeli.
+      - "127.0.0.1:${GRAFANA_PORT:-53000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      # Klasör (secrets/) host'ta 700: başka kullanıcı okuyamaz. Dosya 644: konteynerdeki grafana kullanıcısı (472) okur.
+      - ./secrets/grafana_admin_password:/run/secrets/grafana_admin_password:ro
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    networks:
+      # metrics: Prometheus'a ulaşmak için (iç ağ). grafana_front: yalnızca port yayımlamak için.
+      - metrics
+      - grafana_front
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    cpus: 0.5
+    mem_limit: 384m
+    pids_limit: 128
+
+  # Kendi makinemizin port denetimi (Kural 2: port denetimi yalnızca kendi makinelerimizde).
+  # /proc/net/{tcp,tcp6,udp,udp6} okunur ve port-audit.expected ile karşılaştırılır. Tarama yok, bağlantı yok.
+  port-audit:
+    <<: *hardening
+    build:
+      context: ../..
+      dockerfile: src/Fraud.Collectors/Dockerfile
+    image: fraud-lab-collectors:linux
+    restart: unless-stopped
+    # Host ağ ad alanı: /proc/net bu sürecin ağ ad alanını gösterir. pid: host GEREKMEZ (süreçlere bakılmaz),
+    # yetki (capability) gerekmez (/proc/net herkese okunur), veritabanı parolası verilmez.
+    network_mode: host
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      DOTNET_EnableDiagnostics: "0"
+      PortAudit__ExpectedFile: /etc/fraud-lab/port-audit.expected
+      PortAudit__Interval: "00:00:30"
+      # Metrik HTTP ucu YOK (Metrics kapalı). Sonuç bu dosyaya atomik yazılır; port-audit-exporter okur.
+      PortAudit__StateFile: /var/lib/port-audit/state.json
+    command: ["port-audit"]
+    volumes:
+      - ./port-audit.expected:/etc/fraud-lab/port-audit.expected:ro
+      - port_audit_state:/var/lib/port-audit
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    cpus: 0.25
+    mem_limit: 160m
+    pids_limit: 64
+
+  # port-audit'in sonucunu iç ağda Prometheus'a sunar. Host ağında değil, /proc okumaz, durum dosyasını salt okur.
+  port-audit-exporter:
+    <<: *hardening
+    build:
+      context: ../..
+      dockerfile: src/Fraud.Collectors/Dockerfile
+    image: fraud-lab-collectors:linux
+    restart: unless-stopped
+    depends_on:
+      - port-audit
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      DOTNET_EnableDiagnostics: "0"
+      PortAudit__StateFile: /var/lib/port-audit/state.json
+      Metrics__Enabled: "true"
+      Metrics__Host: "*"
+      Metrics__Port: "9464"
+    command: ["port-audit-exporter"]
+    volumes:
+      - port_audit_state:/var/lib/port-audit:ro
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    networks:
+      - metrics
+    cpus: 0.25
+    mem_limit: 160m
+    pids_limit: 64
+
+networks:
+  # Toplayıcılarla Prometheus arasındaki iç ağ (docker-compose.ct.yml içinde tanımlı, burada yeniden tanımlanmaz).
+  # Grafana'nın 127.0.0.1 portu için gereken köprü. İç ağ olamaz (Docker iç ağda port yayımlamaz).
+  grafana_front: {}
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  # port-audit (yazar) ile port-audit-exporter (salt okur) arasındaki durum dosyası. İmajdaki /var/lib/port-audit
+  # klasörü yetkisiz kullanıcıya aittir; yeni birim bu sahipliği alır.
+  port_audit_state:

@@ -8,6 +8,8 @@ data/raw/
 
 # Gizli bilgiler
 .env
+# Linux kurulumunun parola dosyaları (install.sh üretir)
+deploy/linux/secrets/
 .env.*
 !.env.example
 appsettings.*.local.json

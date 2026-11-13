@@ -1,0 +1,232 @@
+# Uyarı kurallarının birim testleri. Gerçek veri yok; zaman serileri elle yazılır.
+# Çalıştırma (CI'da da):  promtool test rules deploy/linux/monitoring/prometheus/tests/fraud-lab.test.yml
+#
+# Seri yazımı: "0+60x30" = 0'dan başla, her adımda 60 ekle, 30 adım (toplam 31 örnek). "_" = örnek yok (süreç durdu).
+# "1x10" = 1 değeri 11 kez.
+
+rule_files:
+  - ../rules/fraud-lab.yml
+
+evaluation_interval: 15s
+
+tests:
+  # Senaryo: ct-follow 30. dakikada durduruluyor ("docker compose stop ct-follow").
+  # Beklenen: 5 dakika sonra CollectorDown, son örnekten 15 dakika (+1 dk "for") sonra CtFollowerStalled.
+  - interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="prometheus",instance="prometheus"}'
+        values: '0x120'
+      - series: 'up{job="ct-follow",instance="ct-follow"}'
+        values: '1x30 0x90'
+      # Değer = Unix saniye; her dakika başarılı tur.
+      - series: 'fraud_ct_last_success_timestamp_seconds{job="ct-follow",instance="ct-follow",log="sycamore2027h1"}'
+        values: '0+60x30 _x90'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: CtFollowerStalled
+        exp_alerts: []
+      - eval_time: 33m
+        alertname: CollectorDown
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: CollectorDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: ct-follow
+              instance: ct-follow
+            exp_annotations:
+              summary: "ct-follow metrik ucu 5 dakikadır okunamıyor"
+              description: "Kontrol: docker compose ps; docker compose logs --tail 50 ct-follow"
+      - eval_time: 40m
+        alertname: CtFollowerStalled
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: CtFollowerStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "CT izleyicisi 15 dakikadır ilerlemiyor (log: hiç veri yok)"
+              description: "Hata türleri panelde 'CT hataları'. Log: docker compose logs --tail 50 ct-follow"
+
+  # Senaryo: Süreç ayakta ama turlar hep hata veriyor (ör. checkpoint 503). Son başarı 20 dakika önce.
+  - interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="prometheus",instance="prometheus"}'
+        values: '0x60'
+      - series: 'fraud_ct_last_success_timestamp_seconds{job="ct-follow",instance="ct-follow",log="sycamore2027h1"}'
+        values: '0+60x10 600x50'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: CtFollowerStalled
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: CtFollowerStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              log: sycamore2027h1
+            exp_annotations:
+              summary: "CT izleyicisi 15 dakikadır ilerlemiyor (log: sycamore2027h1)"
+              description: "Hata türleri panelde 'CT hataları'. Log: docker compose logs --tail 50 ct-follow"
+
+  # Senaryo: WSL'de "python3 -m http.server 8099 --bind 127.0.0.1" 3. dakikada açılıyor.
+  - interval: 30s
+    input_series:
+      - series: 'port_audit_unexpected_listeners{job="port-audit",instance="port-audit"}'
+        values: '0x5 1x20'
+      - series: 'port_audit_last_run_timestamp_seconds{job="port-audit",instance="port-audit"}'
+        values: '0+30x25'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: UnexpectedOpenPort
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: UnexpectedOpenPort
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: port-audit
+              instance: port-audit
+            exp_annotations:
+              summary: "Bu makinede beklenmeyen 1 dinleyici var"
+              description: "Panelde 'Port denetimi' tablosu. Elle: docker compose run --rm port-audit port-audit --once true. Bilinçli ise deploy/linux/port-audit.expected dosyasına ekleyin."
+      - eval_time: 6m
+        alertname: PortAuditStale
+        exp_alerts: []
+
+  # Senaryo: Son DNS turu. UDP'de 10/40 hata (%25) -> uyarı. DoH'ta 30 SERVFAIL var ama hata sayılmaz -> uyarı yok.
+  # TCP'de 3/10 hata (%30) ama 20 sorgudan az -> uyarı yok.
+  - interval: 1m
+    input_series:
+      - series: 'fraud_dns_last_run_queries{job="network",instance="network",transport="Udp",result="answer"}'
+        values: '30x10'
+      - series: 'fraud_dns_last_run_queries{job="network",instance="network",transport="Udp",result="error"}'
+        values: '10x10'
+      - series: 'fraud_dns_last_run_queries{job="network",instance="network",transport="Doh",result="answer"}'
+        values: '40x10'
+      - series: 'fraud_dns_last_run_queries{job="network",instance="network",transport="Doh",result="servfail"}'
+        values: '30x10'
+      - series: 'fraud_dns_last_run_queries{job="network",instance="network",transport="Tcp",result="answer"}'
+        values: '7x10'
+      - series: 'fraud_dns_last_run_queries{job="network",instance="network",transport="Tcp",result="error"}'
+        values: '3x10'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: DnsErrorRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              transport: Udp
+            exp_annotations:
+              summary: "Son DNS turunda Udp yolunda hata payı 25%"
+              description: "UDP/TCP'de yüksek hata servis sağlayıcının 53 portunu engellediğini gösterebilir. Ayrıntı: dns-compare."
+
+  # Senaryo (M4c): İki log açık. sycamore2027h1 her dakika başarılı; sycamore2026h2 yeniden başlatmadan sonra hiç
+  # tur bitiremiyor (başarı serisi hiç oluşmuyor). Uyarı yalnızca ikincisi için çıkmalı.
+  - interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="prometheus",instance="prometheus"}'
+        values: '0x40'
+      - series: 'fraud_ct_follower_started_timestamp_seconds{job="ct-follow",instance="ct-follow",log="sycamore2027h1"}'
+        values: '0x40'
+      - series: 'fraud_ct_follower_started_timestamp_seconds{job="ct-follow",instance="ct-follow",log="sycamore2026h2"}'
+        values: '0x40'
+      - series: 'fraud_ct_last_success_timestamp_seconds{job="ct-follow",instance="ct-follow",log="sycamore2027h1"}'
+        values: '0+60x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: CtFollowerStalled
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CtFollowerStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              log: sycamore2026h2
+            exp_annotations:
+              summary: "CT izleyicisi 15 dakikadır ilerlemiyor (log: sycamore2026h2)"
+              description: "Hata türleri panelde 'CT hataları'. Log: docker compose logs --tail 50 ct-follow"
+
+  # Senaryo (M3): Watchdog her zaman ateşlenir; status.sh --check onu göremezse "uyarı hattı çalışmıyor" der.
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels:
+              severity: none
+            exp_annotations:
+              summary: "Uyarı hattı çalışıyor (her zaman ateşlenir)"
+              description: "Bu uyarı görünmüyorsa Prometheus veya kuralları çalışmıyor."
+
+  # Senaryo (M4b): Aday tablosuna 2 saattir satır gelmiyor -> DataStale. DNS tablosu 20 saatlik: eşik altında, uyarı yok.
+  - interval: 1m
+    input_series:
+      - series: 'fraud_data_newest_row_age_seconds{job="ct-follow",instance="ct-follow",table="ct_candidates"}'
+        values: '7000+60x30'
+      - series: 'fraud_data_newest_row_age_seconds{job="ct-follow",instance="ct-follow",table="dns_snapshots"}'
+        values: '72000+60x30'
+      - series: 'fraud_data_newest_row_age_seconds{job="ct-follow",instance="ct-follow",table="official_actions"}'
+        values: '9000000+60x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DataStale
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: DataStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: ct-follow
+              instance: ct-follow
+              table: ct_candidates
+            exp_annotations:
+              summary: "ct_candidates tablosuna uzun süredir yeni satır gelmiyor (2h 16m 40s)"
+              description: "Toplayıcı çalışıyor görünse de veri gelmiyor olabilir. Panelde 'Veri tazeliği' satırı."
+
+  # Senaryo (M6): dns_snapshots tablosu 5. saatte boşaltılıyor; tazelik serisi kayboluyor. Aday tablosu taze.
+  # 26 saat hiç örnek yoksa (+10 dk "for") uyarı çıkar; ct_candidates için uyarı yok.
+  - interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="prometheus",instance="prometheus"}'
+        values: '0x2000'
+      - series: 'fraud_data_newest_row_age_seconds{job="ct-follow",instance="ct-follow",table="ct_candidates"}'
+        values: '60x2000'
+      - series: 'fraud_data_newest_row_age_seconds{job="ct-follow",instance="ct-follow",table="dns_snapshots"}'
+        values: '72000+60x300 _x1700'
+    alert_rule_test:
+      - eval_time: 30h
+        alertname: DataStale
+        exp_alerts: []
+      - eval_time: 32h
+        alertname: DataStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              table: dns_snapshots
+            exp_annotations:
+              summary: "dns_snapshots tablosuna uzun süredir yeni satır gelmiyor (tablo boş veya tazelik ölçülmüyor)"
+              description: "Toplayıcı çalışıyor görünse de veri gelmiyor olabilir. Panelde 'Veri tazeliği' satırı."
+
+  # Senaryo (M6): Yeni kurulum, tazelik serisi hiç yok (ct-follow henüz açılmadı). Prometheus 2 saatten kısa süredir
+  # açıkken uyarı yok; 2 saat sonra hâlâ yoksa ct_candidates için uyarı. dns_snapshots için 26 saat beklenir.
+  - interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="prometheus",instance="prometheus"}'
+        values: '0x300'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: DataStale
+        exp_alerts: []
+      - eval_time: 3h
+        alertname: DataStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              table: ct_candidates
+            exp_annotations:
+              summary: "ct_candidates tablosuna uzun süredir yeni satır gelmiyor (tablo boş veya tazelik ölçülmüyor)"
+              description: "Toplayıcı çalışıyor görünse de veri gelmiyor olabilir. Panelde 'Veri tazeliği' satırı."

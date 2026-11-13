@@ -32,7 +32,8 @@ public sealed class CtFollowWorker(
     StaticCtOptions options,
     TimeProvider timeProvider,
     ILogger<CtFollowWorker> logger,
-    ICtLogLockProvider lockProvider) : BackgroundService
+    ICtLogLockProvider lockProvider,
+    StaticCtMetrics? metrics = null) : BackgroundService
 {
     private readonly HashSet<string> _healthySinceLastBeat = new(StringComparer.Ordinal);
     private int _enabledCount;
@@ -55,6 +56,9 @@ public sealed class CtFollowWorker(
     {
         // Ana iş parçacığını bırak: Loglar birbirini beklemesin.
         await Task.Yield();
+
+        // Her etkin logun serisi ilk tur bitmeden oluşur; hiç tur bitiremeyen log da uyarıda görünür.
+        metrics?.FollowerStarted(log.Name);
         ICtLogLock? held = null;
         var busyReported = false;
         try

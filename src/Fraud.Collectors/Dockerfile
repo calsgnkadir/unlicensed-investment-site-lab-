@@ -19,6 +19,10 @@ FROM mcr.microsoft.com/dotnet/runtime:10.0.14-noble AS runtime
 WORKDIR /app
 COPY --from=build /app ./
 
+# port-audit durum dosyasının klasörü (deploy/linux, port_audit_state birimi). Yeni adlandırılmış birim bu klasörün
+# sahipliğini alır; böylece yetkisiz kullanıcı yazabilir. Başka komutlar bu klasörü kullanmaz.
+RUN mkdir -p /var/lib/port-audit && chown "$APP_UID" /var/lib/port-audit && chmod 700 /var/lib/port-audit
+
 # İmajdaki hazır, yetkisiz kullanıcı (root değil).
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Fraud.Collectors.dll"]

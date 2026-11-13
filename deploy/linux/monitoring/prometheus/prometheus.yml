@@ -1,0 +1,47 @@
+# Prometheus ayarı (Linux kurulumu). Her 15 saniyede bir okur, kuralları 15 saniyede bir değerlendirir.
+# Saklama süresi komut satırında: 30 gün / 2 GB (docker-compose.monitoring.yml).
+#
+# Etiketler: Hedeflerin "instance" etiketi sabit bir ada çevrilir (port-audit için IP yerine "port-audit").
+# Metriklerin kendi etiketleri uygulamadaki izin listesinden geçer (Fraud.Infrastructure/Observability/MetricLabels.cs);
+# alan adı, IP veya URL taşımaz.
+#
+# Uyarılar dışarıya gönderilmez (Alertmanager yok, e-posta/webhook yok). Ateşlenen uyarılar Grafana panelinde ve
+# status.sh "Alarmlar" bölümünde görünür.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: ct-follow
+    static_configs:
+      - targets: ["ct-follow:9464"]
+    relabel_configs:
+      - target_label: instance
+        replacement: ct-follow
+
+  - job_name: network
+    static_configs:
+      - targets: ["network:9464"]
+    relabel_configs:
+      - target_label: instance
+        replacement: network
+
+  # port-audit host ağında ama port dinlemez (THREAT_MODEL M1); sonucunu iç ağdaki port-audit-exporter sunar.
+  - job_name: port-audit
+    static_configs:
+      - targets: ["port-audit-exporter:9464"]
+    relabel_configs:
+      - target_label: instance
+        replacement: port-audit
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+    relabel_configs:
+      - target_label: instance
+        replacement: prometheus

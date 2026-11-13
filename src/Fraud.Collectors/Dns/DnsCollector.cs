@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Fraud.Collectors.Collection;
+using Fraud.Collectors.Monitoring;
 using Fraud.Collectors.Network;
 using Fraud.Domain.Collection;
 using Fraud.Domain.Network;
@@ -25,7 +26,13 @@ namespace Fraud.Collectors.Dns;
 /// En az bir bilinen cevap varsa satır Success olur, yoksa en sık görülen hata türüyle Error. DNS'te HTTP kodu yoktur.
 /// </para>
 /// </remarks>
-public sealed class DnsCollector(IDnsQueryClient client, DnsOptions options, TimeProvider timeProvider) : ISourceCollector
+/// <param name="metrics">İsteğe bağlı DNS metrikleri; <paramref name="collectionMetrics"/> tekrar denemeleri sayar.</param>
+public sealed class DnsCollector(
+    IDnsQueryClient client,
+    DnsOptions options,
+    TimeProvider timeProvider,
+    DnsMetrics? metrics = null,
+    CollectionMetrics? collectionMetrics = null) : ISourceCollector
 {
     public CollectionSource Source => CollectionSource.Dns;
 
@@ -85,7 +92,12 @@ public sealed class DnsCollector(IDnsQueryClient client, DnsOptions options, Tim
                             latency < TimeSpan.Zero ? TimeSpan.Zero : latency);
                     }
 
-                    snapshots.Add(ToSnapshot(target.DomainId, queriedAt, location, resolver, transport, type, result, blockIps));
+                    var snapshot = ToSnapshot(target.DomainId, queriedAt, location, resolver, transport, type, result, blockIps);
+                    snapshots.Add(snapshot);
+
+                    // Metrikte yalnızca çözücü adı, yol ve sonuç türü var; sorgulanan ad ve cevap yok.
+                    metrics?.Query(resolver.Name, transport, result, snapshot.BlockMarker);
+                    collectionMetrics?.Retried(CollectionSource.Dns, result.Attempts - 1);
                 }
 
                 if (cancelled)

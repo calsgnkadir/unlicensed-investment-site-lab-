@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Fraud.Collectors.Monitoring;
 using Fraud.Collectors.Network;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -14,7 +15,8 @@ public sealed class CollectionWorker(
     IServiceScopeFactory scopeFactory,
     WorkerOptions options,
     TimeProvider timeProvider,
-    ILogger<CollectionWorker> logger) : BackgroundService
+    ILogger<CollectionWorker> logger,
+    CollectionMetrics? metrics = null) : BackgroundService
 {
     [SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "Bir kaynağın beklenmeyen hatası diğer kaynakları ve sonraki turları durdurmamalı; hata türü loglanır.")]
@@ -40,6 +42,7 @@ public sealed class CollectionWorker(
                 {
                     // Yalnızca istisna türü yazılır; mesaj, sorgu adresi veya veri içerebilir.
                     CollectorLog.RunCrashed(logger, source, ex.GetType().Name);
+                    metrics?.RunCrashed(source);
                 }
             }
 

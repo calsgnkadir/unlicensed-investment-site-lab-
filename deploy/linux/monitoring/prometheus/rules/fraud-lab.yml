@@ -1,0 +1,172 @@
+# Uyarı kuralları. Eşiklerin gerekçesi deploy/linux/README.md "İzleme ve uyarılar" bölümünde.
+# Doğrulama (CI'da da çalışır): promtool check rules deploy/linux/monitoring/prometheus/rules/fraud-lab.yml
+#
+# Bazı kurallar "absent_over_time" kullanır: Süreç durunca metrik tamamen kaybolur, "eşik aşıldı" ifadesi boş döner ve
+# uyarı hiç çıkmazdı. "Prometheus en az X süredir açık" koşulu, ilk kurulumda (henüz hiç veri yokken) yanlış alarmı önler.
+#
+# Etiketler yalnızca sabit değerlerdir (job, log kısa adı, yol, protokol, port). Alan adı, IP veya URL yoktur.
+
+groups:
+  - name: fraud-lab
+    rules:
+      # Her zaman ateşlenir. Uyarı hattının çalıştığının kanıtıdır (THREAT_MODEL M3): status.sh --check bunu
+      # görmezse Prometheus durmuş, kurallar yüklenmemiş veya sorgu çalışmıyor demektir ve 2 koduyla çıkar.
+      # Windows'taki deploy/windows/fraud-lab-check.ps1 bu kodu 15 dakikada bir okuyup bildirim gösterir.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Uyarı hattı çalışıyor (her zaman ateşlenir)"
+          description: "Bu uyarı görünmüyorsa Prometheus veya kuralları çalışmıyor."
+
+      # Herhangi bir metrik ucu 5 dakikadır okunamıyor: konteyner durmuş, çökmüş veya ağ bağlantısı kopmuş.
+      - alert: CollectorDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} metrik ucu 5 dakikadır okunamıyor"
+          description: "Kontrol: docker compose ps; docker compose logs --tail 50 {{ $labels.job }}"
+
+      # CT izleyicisi 15 dakikadır hatasız bir tur bitiremedi (ct-follow sağlık kontrolüyle aynı eşik: heartbeat 900 sn).
+      # İkinci kol: Log 15 dakikadır izleniyor ama bu süreçte HİÇ başarılı tur bitirmedi (başarı serisi hiç oluşmadı).
+      #   İki log açıkken birinin serisi varken diğerininki yoksa absent_over_time bunu görmezdi (THREAT_MODEL M4c).
+      # Üçüncü kol: ct-follow durunca bütün seriler kaybolur; 15 dakika boyunca hiç örnek yoksa da uyarı çıkar.
+      - alert: CtFollowerStalled
+        expr: |
+          (time() - max by (log) (fraud_ct_last_success_timestamp_seconds) > 900)
+          or
+          (
+            (time() - max by (log) (fraud_ct_follower_started_timestamp_seconds) > 900)
+            unless on (log) max by (log) (fraud_ct_last_success_timestamp_seconds)
+          )
+          or on ()
+          (
+            absent_over_time(fraud_ct_last_success_timestamp_seconds[15m]) == 1
+            and on () (time() - process_start_time_seconds{job="prometheus"} > 900)
+          )
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CT izleyicisi 15 dakikadır ilerlemiyor (log: {{ with $labels.log }}{{ . }}{{ else }}hiç veri yok{{ end }})"
+          description: "Hata türleri panelde 'CT hataları'. Log: docker compose logs --tail 50 ct-follow"
+
+      # Geride kalan kayıt hem büyük (> 2 milyon, 2027h1'de ~2 saatlik üretim) hem son 1 saatte artmış; ya da işlenen en
+      # yeni kayıt 2 saatten eski. Kesintiden sonra yetişirken de çıkar; bu doğrudur (yetişme hızı panelde görünür).
+      - alert: CtLagGrowing
+        expr: |
+          (fraud_ct_lag_entries > 2e6 and delta(fraud_ct_lag_entries[1h]) > 0)
+          or
+          fraud_ct_lag_seconds > 7200
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CT gecikmesi büyüyor (log: {{ $labels.log }})"
+          description: "Bant genişliği veya log sunucusu yetişmiyor olabilir. README: CT_MIN_REQUEST_INTERVAL."
+
+      # Günlük DNS turu 26 saattir başarılı (Completed veya Partial) bitmedi. Tur 24 saatte bir ve ~1 saat sürer;
+      # 2 saatlik pay var.
+      - alert: NetworkCollectionStale
+        expr: |
+          (time() - max(fraud_collection_last_success_timestamp_seconds{source="Dns"}) > 93600)
+          or on ()
+          (
+            absent_over_time(fraud_collection_last_success_timestamp_seconds{source="Dns"}[26h]) == 1
+            and on () (time() - process_start_time_seconds{job="prometheus"} > 93600)
+          )
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "26 saattir başarılı DNS turu yok"
+          description: "Kontrol: docker compose logs --tail 100 network. Yol başına sonuçlar panelde."
+
+      # Son DNS turunda, yol başına, ölçüm altyapısı hatası payı %20'den fazla.
+      # SERVFAIL ve NXDOMAIN bu paya GİRMEZ: Çözücü cevap verdi; engellenen ve terk edilen alan adlarında olağandır
+      # (hedef kümenin özelliği, bizim ağımızın arızası değil). Yalnızca "error" sınıfı sayılır: zaman aşımı, bağlantı
+      # hatası, bozuk paket, REFUSED, DoH HTTP hatası. En az 20 sorgu yoksa (tur çoğunlukla önbellekten geçtiyse) uyarı yok.
+      - alert: DnsErrorRateHigh
+        expr: |
+          (
+            sum by (transport) (fraud_dns_last_run_queries{result="error"})
+            / sum by (transport) (fraud_dns_last_run_queries)
+          ) > 0.2
+          and on (transport) sum by (transport) (fraud_dns_last_run_queries) >= 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Son DNS turunda {{ $labels.transport }} yolunda hata payı {{ $value | humanizePercentage }}"
+          description: "UDP/TCP'de yüksek hata servis sağlayıcının 53 portunu engellediğini gösterebilir. Ayrıntı: dns-compare."
+
+      # Beklenen listede olmayan bir dinleyici 2 dakikadır açık (kısa ömürlü soketler bu sürede kapanır).
+      - alert: UnexpectedOpenPort
+        expr: port_audit_unexpected_listeners > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Bu makinede beklenmeyen {{ $value }} dinleyici var"
+          description: "Panelde 'Port denetimi' tablosu. Elle: docker compose run --rm port-audit port-audit --once true. Bilinçli ise deploy/linux/port-audit.expected dosyasına ekleyin."
+
+      # Port denetimi 5 dakikadır başarılı bitmedi (dosya okunamadı, liste geçersiz) veya hiç çalışmıyor.
+      - alert: PortAuditStale
+        expr: |
+          (time() - port_audit_last_run_timestamp_seconds > 300)
+          or on ()
+          (
+            absent(port_audit_last_run_timestamp_seconds) == 1
+            and on () (time() - process_start_time_seconds{job="prometheus"} > 600)
+          )
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Port denetimi 5 dakikadır sonuç üretmiyor"
+          description: "Kontrol: docker compose logs --tail 50 port-audit (geçersiz satır numarası logda yazar)."
+
+      # Veri tazeliği (THREAT_MODEL M4b): Toplayıcı "başarılı" görünse de tabloya yeni satır gelmiyor olabilir.
+      # ct_candidates: 2027h1 günde ~23 milyon kayıt, adaylar saatte onlarca; 2 saat yeni aday yoksa akış bozuk.
+      # dns_snapshots: Tur 24 saatte bir; 26 saat (NetworkCollectionStale ile aynı pay). DNS önbelleği (20 saat)
+      #   taze ölçümü atlarsa satır yazılmaz; 26 saat bu süreyi de kapsar.
+      # Diğer tablolar (official_actions elle yüklenir, ip_asn/port_snapshots IP başına 7 günde bir) için eşik yok;
+      #   değerleri panelde görünür.
+      # absent_over_time kolları (THREAT_MODEL M6): Tablo boşsa (sorgu NULL) veya tazelik ölçümü durursa (ct-follow
+      #   kapalı, izleyici çöktü) seri tamamen kaybolur ve "> eşik" kolu boş döner. Aynı eşik süresince hiç örnek yoksa
+      #   da uyarı çıkar. "Prometheus en az eşik kadar açık" koşulu ilk kurulumda yanlış alarmı önler.
+      #   "or" etiketlere göre birleştirir (on () değil): Bir tablonun kolu diğerininkini gizlemez.
+      - alert: DataStale
+        expr: |
+          fraud_data_newest_row_age_seconds{table="ct_candidates"} > 7200
+          or
+          fraud_data_newest_row_age_seconds{table="dns_snapshots"} > 93600
+          or
+          (
+            absent_over_time(fraud_data_newest_row_age_seconds{table="ct_candidates"}[2h]) == 1
+            and on () (time() - process_start_time_seconds{job="prometheus"} > 7200)
+          )
+          or
+          (
+            absent_over_time(fraud_data_newest_row_age_seconds{table="dns_snapshots"}[26h]) == 1
+            and on () (time() - process_start_time_seconds{job="prometheus"} > 93600)
+          )
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.table }} tablosuna uzun süredir yeni satır gelmiyor ({{ if gt $value 1.0 }}{{ $value | humanizeDuration }}{{ else }}tablo boş veya tazelik ölçülmüyor{{ end }})"
+          description: "Toplayıcı çalışıyor görünse de veri gelmiyor olabilir. Panelde 'Veri tazeliği' satırı."
+
+      # Docker veri diskinde 10 GB'tan az boş yer (install.sh 20 GB altında uyarır). Veritabanı ve Prometheus bu diskte.
+      - alert: DiskLow
+        expr: fraud_disk_available_bytes < 10e9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Docker veri diskinde {{ $value | humanize1024 }}B boş yer kaldı"
+          description: "Kontrol: ./status.sh (veritabanı boyutu ve yedekler). Eski yedekler: KEEP=3 ./backup.sh"

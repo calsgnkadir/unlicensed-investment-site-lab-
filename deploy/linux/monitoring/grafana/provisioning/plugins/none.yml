@@ -1,0 +1,3 @@
+# Eklenti ayarı yok: yalnızca imajla gelen Prometheus veri kaynağı kullanılır (dışarıdan eklenti indirilmez).
+apiVersion: 1
+apps: []

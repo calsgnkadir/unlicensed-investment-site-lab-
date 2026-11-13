@@ -15,6 +15,11 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="Nager.PublicSuffix" Version="3.8.0" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- Metrikler (Hafta 5): .NET'in kendi System.Diagnostics.Metrics API'si + OpenTelemetry SDK + Prometheus dışa aktarıcı.
+         Dışa aktarıcı hâlâ "beta" etiketli (OpenMetrics şartnamesi bitmediği için); SDK ve API kararlı. Sürüm tam sabit. -->
+    <PackageVersion Include="OpenTelemetry" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.HttpListener" Version="1.21.0-beta.1" />
     <PackageVersion Include="Polly.Core" Version="8.9.1" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

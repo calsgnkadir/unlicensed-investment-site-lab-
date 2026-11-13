@@ -1,0 +1,17 @@
+# Grafana veri kaynağı: aynı Docker iç ağındaki Prometheus. Sabit uid, panel JSON'u bu uid'e bağlıdır.
+# Prometheus'a yalnızca okuma sorgusu gider; yönetim API'si zaten kapalıdır.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      # Prometheus kurallarını (uyarılar) Grafana'nın uyarı ekranında salt okunur göster.
+      manageAlerts: true

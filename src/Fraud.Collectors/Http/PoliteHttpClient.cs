@@ -22,6 +22,15 @@ public sealed record HttpFetchResult(byte[]? Body, int? HttpStatus, int Attempts
 /// Tekrar denenen hatalar: 429, 408, 5xx, zaman aşımı, bağlantı hatası.
 /// Tekrar denenmeyenler: diğer 4xx, boyut aşımı (aynı yanıt yine büyük gelir), bozuk sıkıştırma.
 /// </remarks>
+/// <summary>
+/// Bir GET isteği (tekrar denemeler dahil) bittiğinde çağrılır. Metrikler için: tekrar deneme sayısı, okunan bayt,
+/// süre. Adres verilmez; gözlemci hangi kaynağa ait olduğunu kendisi bilir (alan adı metriğe girmez).
+/// </summary>
+public interface IHttpFetchObserver
+{
+    void Fetched(HttpFetchResult result, TimeSpan elapsed);
+}
+
 public sealed class PoliteHttpClient
 {
     private readonly HttpClient _http;
@@ -29,9 +38,13 @@ public sealed class PoliteHttpClient
     private readonly SourceHttpOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ResiliencePipeline<AttemptResult> _pipeline;
+    private readonly IHttpFetchObserver? _observer;
 
-    public PoliteHttpClient(HttpClient http, RequestPacer pacer, SourceHttpOptions options, TimeProvider timeProvider)
+    /// <param name="observer">İsteğe bağlı metrik gözlemcisi. Yoksa hiçbir şey sayılmaz.</param>
+    public PoliteHttpClient(
+        HttpClient http, RequestPacer pacer, SourceHttpOptions options, TimeProvider timeProvider, IHttpFetchObserver? observer = null)
     {
+        _observer = observer;
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _pacer = pacer ?? throw new ArgumentNullException(nameof(pacer));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -67,6 +80,7 @@ public sealed class PoliteHttpClient
         ArgumentNullException.ThrowIfNull(uri);
 
         var attempts = 0;
+        var started = _timeProvider.GetTimestamp();
         var result = await _pipeline.ExecuteAsync(
             async token =>
             {
@@ -75,7 +89,9 @@ public sealed class PoliteHttpClient
             },
             cancellationToken).ConfigureAwait(false);
 
-        return new HttpFetchResult(result.Body, result.HttpStatus, attempts, result.ErrorKind);
+        var fetch = new HttpFetchResult(result.Body, result.HttpStatus, attempts, result.ErrorKind);
+        _observer?.Fetched(fetch, _timeProvider.GetElapsedTime(started));
+        return fetch;
     }
 
     /// <summary>
