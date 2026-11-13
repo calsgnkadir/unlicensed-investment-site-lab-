@@ -23,11 +23,19 @@ tcp/53000@loopback
 # Hangisi açıksa o görünür; ikisi de joker adreste değildir. Hiçbiri yoksa "eksik" bilgi olarak görünür, uyarı değildir.
 udp/53@local
 tcp/53@local
+# chrony komut portu (Ubuntu 25.10 ve sonrası, yalnızca loopback). 2026-11-13 ilk canlı denetimde görüldü.
+udp/323@loopback
+
+# --- Aynı dizüstündeki Windows tarafı (WSL localhost yansıtması) ---
+# Windows'ta çalışan Docker Desktop'ın 127.0.0.1'e yayımladığı portlar WSL'de de loopback dinleyicisi olarak görünür.
+# 2026-11-13 ilk canlı denetimde görüldü. Bu konteynerler kapatılırsa "eksik" yalnızca bilgi olarak görünür.
+# fraud-lab geliştirme veritabanı (kök docker-compose.yml, 127.0.0.1:55432):
+tcp/55432@loopback
+# Aynı makinedeki başka bir yerel geliştirme projesi (127.0.0.1:8000):
+tcp/8000@loopback
 
 # --- Gerekirse açın (varsayılan kapalı) ---
 # SSH (WSL'de genelde yok; ayrı bir Linux sunucuda varsa):
 # tcp/22
-# chrony komut portu (Ubuntu 25.10 ve sonrası, yalnızca loopback):
-# udp/323@loopback
 # containerd CRI akış sunucusu loopback'te rastgele port açarsa (Docker CE'de CRI genelde kapalıdır):
 # tcp/32768-60999@loopback
