@@ -1,0 +1,73 @@
+# Geniş finans sözlüğü (v1). Açıklama: docs/research/FINANS_SOZLUGU.md
+# Biçim: Her satırda bir terim. Küçük harf, ASCII. Boş satır ve # ile başlayan satırlar yok sayılır.
+# "!" ile başlayan satır hariç tutma dizesidir: Eşleştirmeden önce etiketten silinir.
+# En kısa terim 5 karakter. Marka adı yok. Dondurulduktan sonra bu dosyaya terim eklenmez.
+
+# Türkçe
+yatirim
+borsa
+kripto
+menkul
+banka
+finans
+kredi
+hisse
+tahvil
+doviz
+dolar
+parite
+emtia
+endeks
+portfoy
+sermaye
+mevduat
+temettu
+kaldirac
+kambiyo
+ekonomi
+aracikurum
+
+# İngilizce
+forex
+trade
+trading
+invest
+capital
+broker
+equity
+finance
+financial
+fintech
+banking
+wealth
+funding
+credit
+mortgage
+dividend
+securities
+commodity
+commodities
+currency
+exchange
+futures
+leverage
+treasury
+savings
+binaryoption
+
+# Kripto
+crypto
+bitcoin
+ethereum
+altcoin
+blockchain
+stablecoin
+airdrop
+
+# Hariç tutma dizeleri
+!investigat
+!trademark
+!tradeshow
+!hisset
+!accredit
+!commonwealth

@@ -4,3 +4,6 @@ src/Fraud.Infrastructure/DomainNames/public_suffix_list.dat -text
 # Linux kurulum betikleri her platformda LF ile çıkar (CRLF ile bash çalışmaz).
 *.sh text eol=lf
 deploy/linux/systemd/* text eol=lf
+
+# Geniş finans sözlüğü dondurulmuş dosya: satır sonu her platformda LF (SHA-256 değişmesin).
+docs/research/finans_sozlugu.txt text eol=lf
