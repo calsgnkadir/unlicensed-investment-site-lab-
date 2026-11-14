@@ -13,7 +13,9 @@ Her kayıt: tarih, karar, neden, alternatif.
 
 **Neden:** Etiket, ölçümün temeli. Tek bir geçişte yapılan hata bütün sonuçlara taşınır.
 
-**Alternatif:** Tamamen elle doğrulama. Daha yavaş olurdu, ama kontrol bir kişiye bağlı olurdu. Rastgele 10 satırlık elle örnek kontrolü sonradan eklenebilir.
+**Alternatif:** Tamamen elle doğrulama. Daha yavaş olurdu, ama kontrol bir kişiye bağlı olurdu.
+
+**Elle örnek kontrolü (2026-11-15):** `scripts/phase0/make_manual_check.py` 175 kayıttan 10 tanesini sabit tohumla (`elle-kontrol-2026-11-15`) rastgele seçti. Seçilen kayıtlar 6 farklı bültenden geliyor. Kadircan her kaydı bültenin PDF'inde açtı ve dört soruya baktı: Adres bültende geçiyor mu, erişim engeli listesinde mi, karar tarihi doğru mu, kategori doğru mu? 10 kaydın 10'unda dört soruya da "doğru" sonucunu bildirdi. Sonuç tek tek hücrelere değil, toplu olarak bildirildi. 10 kayıtlık bir örnek büyük hataları yakalar ama küçük bir hata oranını dışlamaz: 0/10 hata için %95 üst sınır yaklaşık %26'dır.
 
 **Sınır:** İncelemeler bülten metnine dayanır. Bültende yanlış yazılmış bir adres, veride de yanlış kalır.
 
@@ -55,3 +57,19 @@ Her kayıt: tarih, karar, neden, alternatif.
 **Karar:** DNS, RIPEstat ve InternetDB kayıtları yerel PostgreSQL veritabanında tutulur. Veritabanı ve `pg_dump` yedekleri `data/private/` ile aynı gizlilik düzeyindedir: Repoya girmez, paylaşılmaz, rapora yalnızca toplu sayı olarak çıkar. InternetDB'nin `vulns` ve `hostnames` alanları saklanmaz.
 
 **Neden:** Kural 8 şüpheli listenin ve port verisinin repoya girmemesini ister. Veritabanı da repo dışında, bu yüzden aynı korumayı sağlıyor. Veriyi ayrıca dosyaya yazmak, sızabilecek ikinci bir kopya yaratırdı.
+
+## 2026-11-15: Sinyal ve ölçüm kodunu kim yazar
+
+**Karar:** Hafta 6'dan itibaren `Fraud.Signals`, `Fraud.Evaluation` ve `Fraud.Claims` kodunu Kadircan yazmaz. Bu kod, yapay zekâ destekli olarak geliştirilir. Kadircan'ın kendi ifadesi: "hafta 6 dan itibaren kodları ben yazamayacağım bu senin için ben çalışıp öğrenirim sen başla".
+
+**Şart:** Her modülle birlikte `docs/learn/` altında satır satır bir okuma rehberi ve sınama soruları yazılır. Kadircan, kodun her satırını mülakatta açıklayabilecek düzeye gelene kadar bu rehberle çalışır. Ölçüm kuralları değişmez:
+- Geleceğe ait veri kullanılmaz.
+- Ayar ve test verisi ayrılır.
+- Kilitli test bir kez çalışır.
+- Sonuca göre kural değiştirilmez.
+
+**Neden:** Projenin takvimi ile Kadircan'ın ders ve staj başvuru yükü bir arada yürütülmüyor. Öğrenme hedefi kodu yazmaktan, kodu anlayıp savunabilmeye kaydırıldı.
+
+**Alternatif:** Kodun tamamını Kadircan'ın yazması (önceki kural). Daha fazla öğrenme sağlar, ama zaman planına sığmıyor.
+
+**Sınır:** Kod Kadircan'ın elinden çıkmadığı için mülakatta "yapay zekâ destekli geliştirildi, her satırını anlıyor ve savunabiliyorum" şeklinde anlatılmalıdır.
