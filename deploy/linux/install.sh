@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.ct.yml"
 MONITORING_FILE="$SCRIPT_DIR/docker-compose.monitoring.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
-EXPECTED_PORTS="$SCRIPT_DIR/port-audit.expected"
+EXPECTED_PORTS="$SCRIPT_DIR/port-audit/expected"
 # Grafana parolası ortam değişkeninde değil dosyada (docker inspect'te görünmez). Klasör 700: bu makinedeki başka
 # kullanıcılar okuyamaz. Dosya 644: konteynere salt okunur bağlanınca grafana kullanıcısı (uid 472) okuyabilsin diye.
 SECRETS_DIR="$SCRIPT_DIR/secrets"
@@ -139,7 +139,7 @@ fi
 
 # İzleme anahtarları: Eski kurulumun .env dosyasına da eklenir (var olan satırlara dokunulmaz).
 ensure_env GRAFANA_PORT 53000 \
-    "Grafana yalnızca 127.0.0.1 üzerinde bu portta. Değişirse port-audit.expected içindeki tcp/53000 satırı da değişmeli."
+    "Grafana yalnızca 127.0.0.1 üzerinde bu portta. Değişirse port-audit/expected içindeki tcp/53000 satırı da değişmeli."
 # Bu klasörde -f yazmadan çalışan "docker compose ..." komutları da iki dosyayı birlikte okusun.
 ensure_env COMPOSE_FILE "docker-compose.ct.yml:docker-compose.monitoring.yml" \
     "Bu klasörde 'docker compose' iki dosyayı birlikte kullanır (veri + izleme)."

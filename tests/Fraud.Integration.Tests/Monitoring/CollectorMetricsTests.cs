@@ -225,6 +225,13 @@ public sealed class CollectorMetricsTests(PostgresFixture postgres) : IDisposabl
         Assert.Null(_capture.Last("fraud_data_newest_row_age_seconds", "table=ct_candidates")); // boş tablo: seri yok
         Assert.Equal(0, _capture.Sum("fraud_data_freshness_query_errors"));
         Assert.NotNull(_capture.Last("fraud_data_freshness_last_check_timestamp_seconds"));
+
+        // Panel yaşı zaman damgasından hesaplar (ölçüm süreci dursa da son bilinen değer kalır).
+        Assert.Equal(Start.ToUnixTimeSeconds(), _capture.Last("fraud_data_newest_row_timestamp_seconds", "table=official_actions"));
+
+        // Hata sayacı her tablo için sıfırla başlar: Hiç hata olmasa da seri vardır ("hata yok" ≠ "ölçüm yok").
+        Assert.All(DataFreshnessMonitor.Queries, q =>
+            Assert.Equal(1, _capture.Count("fraud_data_freshness_query_errors", "table=" + q.Label)));
     }
 
     private StaticCtFollower Follower(FraudDbContext db, FakeCtServer server, StaticCtMetrics metrics)

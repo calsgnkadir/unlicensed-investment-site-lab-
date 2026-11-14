@@ -123,14 +123,25 @@ public sealed partial class MonitoringDeploymentTests
         Assert.DoesNotContain("ConnectionStrings", audit, StringComparison.Ordinal);
         Assert.DoesNotContain("PASSWORD", audit, StringComparison.Ordinal);
         Assert.DoesNotMatch(@"-\s*/(proc|sys|var|etc|run|home|root)\b[^\n]*:", audit); // host yolu bağlanmıyor
-        Assert.Matches(@"\./port-audit\.expected:[^\n]*:ro", audit);
+        // Beklenen liste: klasör bağı (git pull sonrası yeni inode görünsün diye), salt okunur. port-audit'in bağladığı
+        // tek host yolu bu klasör; içinde yalnızca beklenen liste dosyası var (sır veya betik bu yoldan konteynere girmez).
+        Assert.Matches(@"(?m)^\s*-\s*\./port-audit:/etc/fraud-lab/port-audit:ro\s*$", audit);
+        Assert.Contains("PortAudit__ExpectedFile: /etc/fraud-lab/port-audit/expected", audit, StringComparison.Ordinal);
+        var hostMounts = Regex.Matches(audit, @"(?m)^\s*-\s*(\.{1,2}/[^:\s]*):").Select(m => m.Groups[1].Value).ToList();
+        Assert.Equal(["./port-audit"], hostMounts);
+        Assert.DoesNotMatch(@"(?m)^\s*-\s*\./port-audit:[^\n]*:rw", audit);
+        var mounted = Directory.EnumerateFileSystemEntries(Path.Combine(RepoFiles.Root, "deploy", "linux", "port-audit"), "*", SearchOption.AllDirectories)
+            .Select(Path.GetFileName).ToList();
+        Assert.Equal(["expected"], mounted);
+        Assert.False(File.Exists(Path.Combine(RepoFiles.Root, "deploy", "linux", "port-audit.expected")), "Eski tek dosya bağı geri gelmemeli");
         Assert.Matches(@"-\s*port_audit_state:/var/lib/port-audit\s*(\n|$)", audit);
 
         // Exporter: host ağında değil, yalnızca iç metrik ağında; durum birimini salt okur; sır ve /proc yok.
         Assert.DoesNotContain("network_mode", exporter, StringComparison.Ordinal);
         Assert.Matches(@"networks:\s*\n\s*-\s*metrics\s*(\n|$)", exporter);
         Assert.Matches(@"-\s*port_audit_state:/var/lib/port-audit:ro", exporter);
-        Assert.DoesNotContain("port-audit.expected", exporter, StringComparison.Ordinal);
+        Assert.DoesNotContain("./port-audit:", exporter, StringComparison.Ordinal);
+        Assert.DoesNotContain("PortAudit__ExpectedFile", exporter, StringComparison.Ordinal);
         Assert.DoesNotContain("PASSWORD", exporter, StringComparison.Ordinal);
         Assert.DoesNotContain("ports:", exporter, StringComparison.Ordinal);
     }
@@ -303,7 +314,7 @@ public sealed partial class MonitoringDeploymentTests
             Assert.DoesNotContain("10.213.199", text, StringComparison.Ordinal);
         }
 
-        var expected = RepoFiles.ReadLines("deploy/linux/port-audit.expected").Select(l => l.Split('#')[0]).ToList();
+        var expected = RepoFiles.ReadLines("deploy/linux/port-audit/expected").Select(l => l.Split('#')[0]).ToList();
         Assert.DoesNotContain(expected, l => Regex.IsMatch(l, @"\b946[45]\b"));
 
         // 3) Host ağındaki tek servis port-audit ve hiçbir servis host'ta port yayımlamıyor (Grafana yalnızca 127.0.0.1).

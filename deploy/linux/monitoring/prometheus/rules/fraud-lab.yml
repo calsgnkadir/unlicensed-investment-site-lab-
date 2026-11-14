@@ -111,7 +111,7 @@ groups:
           severity: critical
         annotations:
           summary: "Bu makinede beklenmeyen {{ $value }} dinleyici var"
-          description: "Panelde 'Port denetimi' tablosu. Elle: docker compose run --rm port-audit port-audit --once true. Bilinçli ise deploy/linux/port-audit.expected dosyasına ekleyin."
+          description: "Panelde 'Port denetimi' tablosu. Elle: docker compose run --rm port-audit port-audit --once true. Bilinçli ise deploy/linux/port-audit/expected dosyasına ekleyin."
 
       # Port denetimi 5 dakikadır başarılı bitmedi (dosya okunamadı, liste geçersiz) veya hiç çalışmıyor.
       - alert: PortAuditStale

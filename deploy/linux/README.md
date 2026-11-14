@@ -86,7 +86,7 @@ geçmiş tablosu henüz yokken EF Core'un yazdığı bilinen bir satırdır; ard
 | `CT_ENABLE_2026H2` | `false` (varsayılan). `true` ise 2026h2 dilimi de izlenir (günde ~1 GB daha; 17 Aralık 2026'da kapanıyor). |
 | `DNS_LOCATION` | İsteğe bağlı. Ağ kaydının ölçüm konumu. Varsayılan `tr-ev-ubuntu`. |
 | `CT_MIN_REQUEST_INTERVAL` | İsteğe bağlı. Log başına iki isteğin başlangıcı arasındaki en kısa süre. Varsayılan `00:00:00.500`. |
-| `GRAFANA_PORT` | Grafana'nın `127.0.0.1` portu. Varsayılan `53000`. Değişirse `port-audit.expected` da değişmeli. |
+| `GRAFANA_PORT` | Grafana'nın `127.0.0.1` portu. Varsayılan `53000`. Değişirse `port-audit/expected` da değişmeli. |
 | `COMPOSE_FILE` | Bu klasörde `-f` yazmadan `docker compose` iki dosyayı (veri + izleme) birlikte okusun diye. |
 
 Bu ayarlar yalnızca bu Linux kurulumunu etkiler; `src/Fraud.Collectors/appsettings.json` içindeki geliştirme
@@ -326,7 +326,7 @@ Neden `network_mode: host`: `/proc/net`, okuyan sürecin ağ ad alanını göste
 yalnızca kendini görürdü. Bunun bedeli küçük tutuldu: yetkisiz kullanıcı, salt okunur dosya sistemi, bütün Linux
 yetkileri kaldırılmış, `pid: host` yok (süreçlere bakılmaz), veritabanı parolası verilmez.
 
-Beklenen liste: `port-audit.expected` (açıklamalar dosyanın içinde). Varsayılan liste bu WSL Ubuntu + Docker Engine
+Beklenen liste: `port-audit/expected` (açıklamalar dosyanın içinde). Varsayılan liste bu WSL Ubuntu + Docker Engine
 kurulumu için düşünüldü:
 
 | Kayıt | Ne |
@@ -335,7 +335,9 @@ kurulumu için düşünüldü:
 | `udp/53@local`, `tcp/53@local` | WSL DNS tüneli (10.255.255.254) veya systemd-resolved (127.0.0.53, 127.0.0.54) |
 
 SSH, chrony veya containerd'nin loopback portu gerekiyorsa dosyadaki yorumlu satırları açın. Dosya değişince yeniden
-başlatma gerekmez (30 sn içinde okunur). Bu dosya makinenin "açık kapı" listesidir; değişikliği bilerek ve commit
+başlatma gerekmez (30 sn içinde okunur): Konteynere dosya değil `port-audit/` klasörü salt okunur bağlanır. `git pull`
+ve çoğu düzenleyici dosyayı yeni bir inode ile değiştirir; tek dosya bağlansaydı çalışan konteyner eski içeriği görmeye
+devam ederdi. Bu klasöre başka dosya koymayın. Bu dosya makinenin "açık kapı" listesidir; değişikliği bilerek ve commit
 mesajında nedeniyle yapın.
 
 "Eksik beklenen" uyarı değil, bilgidir: Ör. Grafana durmuşsa `tcp/53000` eksik görünür.

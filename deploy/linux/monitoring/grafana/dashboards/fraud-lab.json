@@ -1343,14 +1343,14 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Veritabanı dakikada bir okunur (ct-follow). Tablo boşsa çubuk yok.",
+      "description": "Son bilinen en yeni satır zamanından hesaplanır; ölçüm süreci (ct-follow) bir süre dursa da boş kalmaz. Tablo boşsa çubuk yok.",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "fraud_data_newest_row_age_seconds",
+          "expr": "time() - last_over_time(fraud_data_newest_row_timestamp_seconds[1d])",
           "legendFormat": "{{table}}",
           "refId": "A",
           "instant": true,
@@ -1389,20 +1389,88 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 16,
+        "w": 12,
         "x": 0,
+        "y": 62
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tazelik ölçümünden beri",
+      "id": 30,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Veritabanı dakikada bir okunur (ct-follow). Büyükse ölçüm durmuş: ct-follow kapalı veya izleyici çalışmıyor.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - last_over_time(fraud_data_freshness_last_check_timestamp_seconds[1d])",
+          "legendFormat": "yaş",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 180
+              },
+              {
+                "color": "red",
+                "value": 900
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 12,
         "y": 62
       }
     },
     {
       "type": "timeseries",
       "title": "Tazelik sorgusu hatası (saatlik)",
-      "id": 30,
+      "id": 31,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "Sıfır = sorgular çalışıyor. Seri yoksa ölçüm süreci hiç çalışmamış.",
       "targets": [
         {
           "datasource": {
@@ -1447,7 +1515,7 @@
     {
       "type": "row",
       "title": "Port denetimi (bu makine)",
-      "id": 31,
+      "id": 32,
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1460,7 +1528,7 @@
     {
       "type": "stat",
       "title": "Beklenmeyen dinleyici",
-      "id": 32,
+      "id": 33,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1524,7 +1592,7 @@
     {
       "type": "stat",
       "title": "Eksik beklenen",
-      "id": 33,
+      "id": 34,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1588,7 +1656,7 @@
     {
       "type": "stat",
       "title": "Son denetimden beri",
-      "id": 34,
+      "id": 35,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1652,7 +1720,7 @@
     {
       "type": "table",
       "title": "Beklenmeyen dinleyiciler",
-      "id": 35,
+      "id": 36,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1704,7 +1772,7 @@
     {
       "type": "table",
       "title": "Dinlemeyen beklenen kayıtlar",
-      "id": 36,
+      "id": 37,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1756,7 +1824,7 @@
     {
       "type": "timeseries",
       "title": "Docker veri diski boş alan",
-      "id": 37,
+      "id": 38,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1806,7 +1874,7 @@
     {
       "type": "timeseries",
       "title": "Dinleyen soket",
-      "id": 38,
+      "id": 39,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1856,7 +1924,7 @@
     {
       "type": "row",
       "title": "Süreçler (.NET çalışma zamanı)",
-      "id": 39,
+      "id": 40,
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1869,7 +1937,7 @@
     {
       "type": "timeseries",
       "title": "Bellek (working set)",
-      "id": 40,
+      "id": 41,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1919,7 +1987,7 @@
     {
       "type": "timeseries",
       "title": "CPU",
-      "id": 41,
+      "id": 42,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1969,7 +2037,7 @@
     {
       "type": "timeseries",
       "title": "Metrik ucu erişimi (up)",
-      "id": 42,
+      "id": 43,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

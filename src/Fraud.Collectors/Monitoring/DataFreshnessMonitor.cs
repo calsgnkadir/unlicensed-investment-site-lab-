@@ -87,8 +87,19 @@ public sealed partial class DataFreshnessMonitor : BackgroundService
         _ownsMeter = meterFactory is null;
         _meter = meterFactory?.Create(MeterName) ?? new Meter(MeterName);
         _errors = _meter.CreateCounter<long>("fraud_data_freshness_query_errors", null, "Okunamayan tazelik sorgusu");
+
+        // Sayaç serileri sıfırla başlatılır: Hiç hata olmazsa seri hiç oluşmaz ve panel "No data" gösterirdi
+        // ("hata yok" ile "ölçüm yok" ayırt edilemezdi). Etiket kümesi sabit (7 tablo).
+        foreach (var (_, label, _) in Queries)
+        {
+            _errors.Add(0, MetricLabels.Tag("table", label));
+        }
+
         _meter.CreateObservableGauge("fraud_data_newest_row_age_seconds", ObserveAge, "s",
             "Tablodaki en yeni satırın yaşı (şimdi - satırın gözlem zamanı). Tablo boşsa seri yok.");
+        _meter.CreateObservableGauge("fraud_data_newest_row_timestamp_seconds", ObserveTimestamp, "s",
+            "Tablodaki en yeni satırın gözlem zamanı (Unix saniye). Panel yaşı bundan hesaplar: Ölçüm süreci bir süre "
+            + "durursa bile son bilinen zamandan doğru yaş gösterilir.");
         _meter.CreateObservableGauge("fraud_data_freshness_last_check_timestamp_seconds", ObserveLastCheck, "s",
             "Tazelik sorgularının son çalıştığı an (Unix saniye)");
     }
@@ -162,6 +173,14 @@ public sealed partial class DataFreshnessMonitor : BackgroundService
         foreach (var (table, newest) in _newest)
         {
             yield return new Measurement<double>(Math.Max(0, (now - newest).TotalSeconds), MetricLabels.Tag("table", table));
+        }
+    }
+
+    private IEnumerable<Measurement<double>> ObserveTimestamp()
+    {
+        foreach (var (table, newest) in _newest)
+        {
+            yield return new Measurement<double>(newest.ToUnixTimeMilliseconds() / 1000.0, MetricLabels.Tag("table", table));
         }
     }
 

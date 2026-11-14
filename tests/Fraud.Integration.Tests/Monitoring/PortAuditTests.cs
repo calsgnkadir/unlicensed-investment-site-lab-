@@ -268,7 +268,7 @@ public sealed class PortAuditTests : IDisposable
     [Fact]
     public void Checked_in_expected_list_for_the_linux_deployment_parses()
     {
-        var path = Path.Combine(RepoRoot(), "deploy", "linux", "port-audit.expected");
+        var path = Path.Combine(RepoRoot(), "deploy", "linux", "port-audit", "expected");
         var entries = ExpectedListeners.Parse(File.ReadLines(path));
 
         // Grafana yalnızca loopback'te. port-audit host ağında hiçbir port dinlemez (M1): 9465 listede yok.
@@ -355,6 +355,25 @@ public sealed class PortAuditTests : IDisposable
         Assert.Equal(0, capture.Last("port_audit_expected_missing"));
         Assert.Equal(0, capture.Last("port_audit_listeners", "protocol=tcp"));
         Assert.Equal(3, capture.Sum("port_audit_state_read_errors")); // bozuk JSON, sayısal enum, büyük dosya
+    }
+
+    [Fact]
+    public void Expected_list_is_reread_every_run_even_when_replaced_by_rename()
+    {
+        // git pull ve çoğu düzenleyici dosyayı yeni dosya yazıp yeniden adlandırarak değiştirir (yeni inode). Denetim her
+        // turda dosyayı yolundan yeniden açar; Linux kurulumunda bu yüzden dosya değil klasör bağlanır.
+        WriteSamples(includeV6: false);
+        using var capture = new MetricCapture();
+        using var metrics = new PortAuditMetrics(capture.Factory);
+        var worker = Worker(metrics, new FakeTimeProvider());
+
+        Assert.Contains(worker.RunOnce()!.Unexpected, u => u.Port == 8099);
+
+        var replacement = Path.Combine(_dir, "expected.new");
+        File.WriteAllText(replacement, Expected + "\ntcp/8099\nudp/68\n");
+        File.Move(replacement, Path.Combine(_dir, "expected"), overwrite: true);
+
+        Assert.Empty(worker.RunOnce()!.Unexpected);
     }
 
     [Fact]

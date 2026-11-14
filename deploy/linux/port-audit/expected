@@ -8,6 +8,9 @@
 #   tcp/PORT@local        joker adres (0.0.0.0, ::) dışında herhangi bir adreste
 #   tcp/A-B@loopback      aralık (aralık hiçbir zaman "eksik" sayılmaz)
 # Bu dosya değişince port-audit servisi bir sonraki denetimde (30 sn) yeni listeyi okur; yeniden başlatma gerekmez.
+# Bu yüzden konteynere dosya değil KLASÖR (deploy/linux/port-audit/) bağlanır: "git pull" ve çoğu düzenleyici dosyayı
+# yeni bir inode ile değiştirir; tek dosya bağlansaydı konteyner eski inode'u görmeye devam ederdi. Bu klasöre başka
+# dosya koymayın: Klasörün tamamı port-audit konteynerine salt okunur görünür.
 # Değişikliği bilerek yapın ve commit mesajında nedenini yazın: Bu dosya makinenin "açık kapı" listesidir.
 
 # --- Bu kurulumun kendi portları ---

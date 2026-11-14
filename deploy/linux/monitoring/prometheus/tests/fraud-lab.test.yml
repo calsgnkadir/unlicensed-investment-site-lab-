@@ -91,7 +91,7 @@ tests:
               instance: port-audit
             exp_annotations:
               summary: "Bu makinede beklenmeyen 1 dinleyici var"
-              description: "Panelde 'Port denetimi' tablosu. Elle: docker compose run --rm port-audit port-audit --once true. Bilinçli ise deploy/linux/port-audit.expected dosyasına ekleyin."
+              description: "Panelde 'Port denetimi' tablosu. Elle: docker compose run --rm port-audit port-audit --once true. Bilinçli ise deploy/linux/port-audit/expected dosyasına ekleyin."
       - eval_time: 6m
         alertname: PortAuditStale
         exp_alerts: []

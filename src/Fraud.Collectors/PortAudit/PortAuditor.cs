@@ -14,8 +14,11 @@ public sealed class PortAuditOptions
     /// </summary>
     public string ProcNetDirectory { get; set; } = "/proc/net";
 
-    /// <summary>Beklenen liste dosyası (bkz. <see cref="ExpectedListeners"/>). Linux kurulumunda salt okunur bağlanır.</summary>
-    public string ExpectedFile { get; set; } = "/etc/fraud-lab/port-audit.expected";
+    /// <summary>
+    /// Beklenen liste dosyası (bkz. <see cref="ExpectedListeners"/>). Linux kurulumunda bulunduğu KLASÖR salt okunur
+    /// bağlanır; dosya her denetimde yeniden okunduğu için "git pull" sonrası yeniden başlatma gerekmez.
+    /// </summary>
+    public string ExpectedFile { get; set; } = "/etc/fraud-lab/port-audit/expected";
 
     /// <summary>İki denetim arasındaki süre.</summary>
     public TimeSpan Interval { get; set; } = TimeSpan.FromSeconds(30);
