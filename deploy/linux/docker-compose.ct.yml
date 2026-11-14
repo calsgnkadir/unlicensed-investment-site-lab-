@@ -126,8 +126,13 @@ services:
       # sertifikalar 2027h1'e düşüyor; 2026h2 dilimi 17 Aralık 2026'da kapanıyor.
       StaticCt__Logs__0__Enabled: ${CT_ENABLE_2026H2:-false}
       StaticCt__Logs__1__Enabled: ${CT_ENABLE_2027H1:-true}
-      # İki isteğin başlangıcı arasındaki en kısa süre (log başına). 0,5 sn = en fazla 2 tile/sn; 2027h1 ~1 tile/sn üretiyor.
-      StaticCt__MinRequestInterval: ${CT_MIN_REQUEST_INTERVAL:-00:00:00.500}
+      # İki isteğin başlangıcı arasındaki en kısa süre (log başına) ve aynı anda en fazla istek.
+      # 0,25 sn ve 4 eşzamanlı = en fazla 4 istek/sn. 2027h1 ~1 tile/sn üretiyor; ev makinesi her zaman açık olmadığı
+      # için kapalı kalınan süreyi yakalamak gerekiyor (2026-11-15: 18 milyon kayıt gerideydi). static-ct-api tile'ları
+      # değişmez ve önbelleğe alınabilir tanımlar, paralel çekmeyi açıkça öngörür; tanımlı bir hız sınırı yoktur.
+      # Kod 100 ms altına ve 8 eşzamanlıdan fazlasına izin vermez (StaticCtOptions.Validate).
+      StaticCt__MinRequestInterval: ${CT_MIN_REQUEST_INTERVAL:-00:00:00.250}
+      StaticCt__MaxConcurrency: ${CT_MAX_CONCURRENCY:-4}
       # Etkin her log hatasız bir tur bitirdikçe yenilenir; sağlık kontrolü yaşına bakar.
       StaticCt__HeartbeatFile: /tmp/ct-follow.heartbeat
       # Metrikler: konteynerin içinde 9464 (yayımlanmaz). Tablo tazeliği yalnızca bu süreçte, dakikada bir okunur.
