@@ -39,6 +39,7 @@ public sealed class StaticCtMetrics : IDisposable
     private readonly Counter<long> _processed;
     private readonly Counter<long> _skipped;
     private readonly Counter<long> _candidates;
+    private readonly Counter<long> _neutralSample;
     private readonly Counter<long> _errors;
     private readonly Counter<long> _retries;
     private readonly Counter<long> _bytes;
@@ -54,6 +55,8 @@ public sealed class StaticCtMetrics : IDisposable
         _processed = _meter.CreateCounter<long>("fraud_ct_entries_processed", null, "Sertifikası okunup filtreden geçirilen kayıt");
         _skipped = _meter.CreateCounter<long>("fraud_ct_entries_skipped", null, "Okunamayan, indirilemeyen veya doğrulanamayan kayıt");
         _candidates = _meter.CreateCounter<long>("fraud_ct_candidates", null, "ct_candidates tablosuna ilk kez yazılan aday");
+        _neutralSample = _meter.CreateCounter<long>("fraud_ct_neutral_sample", null,
+            "Tarafsız örneğe (ct_neutral_sample) ilk kez giren kayıtlı alan adı. Alan adı etikete girmez, yalnızca sayı.");
         _errors = _meter.CreateCounter<long>("fraud_ct_errors", null, "Hatayla biten tur (hata türüne göre)");
         _retries = _meter.CreateCounter<long>("fraud_ct_http_retries", null, "Tekrar denenen HTTP isteği (ilk deneme sayılmaz)");
         _bytes = _meter.CreateCounter<long>("fraud_ct_http_body_bytes", "By",
@@ -89,6 +92,9 @@ public sealed class StaticCtMetrics : IDisposable
         _skipped.Add(skipped, tag);
         _candidates.Add(newCandidates, tag);
     }
+
+    /// <summary>Tarafsız örneğe ilk kez giren alan adı sayısı (dışa aktarılan ad: fraud_ct_neutral_sample_total).</summary>
+    public void NeutralSampled(string log, long newDomains) => _neutralSample.Add(newDomains, LogTag(log));
 
     public void Skipped(string log, long entries) => _skipped.Add(entries, LogTag(log));
 

@@ -157,6 +157,15 @@ public static class CollectorServiceCollectionExtensions
 
         services.AddSingleton(staticCt);
         services.AddSingleton<ICandidateFilter>(filter);
+
+        // Tarafsız örneklem (Çerçeve N). Tuz yoksa örnekleyici kaydedilmez; ct-follow komutu bu durumda hiç başlamaz
+        // (Program.cs, ValidateForFollow). Tek seferlik komutlar (ct-sample, collect-crtsh) tuz istemez.
+        var neutral = Bind<NeutralSampleOptions>(configuration, NeutralSampleOptions.SectionName);
+        services.AddSingleton(neutral);
+        if (neutral.Enabled && !string.IsNullOrWhiteSpace(neutral.Salt))
+        {
+            services.AddSingleton(sp => new NeutralSampler(neutral, sp.GetRequiredService<Fraud.Domain.DomainNames.IDomainNameNormalizer>()));
+        }
         services.AddSingleton(sp => new StaticCtMetrics(
             sp.GetService<System.Diagnostics.Metrics.IMeterFactory>(), sp.GetService<TimeProvider>()));
         services.AddSingleton<IStaticCtClientFactory, StaticCtClientFactory>();

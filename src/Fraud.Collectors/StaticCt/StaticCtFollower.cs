@@ -99,7 +99,7 @@ public sealed class StaticCtFollower(
         {
             if (isNew)
             {
-                await store.CommitAsync(state, isNew: true, [], _ => [], CancellationToken.None).ConfigureAwait(false);
+                await store.CommitAsync(state, isNew: true, [], [], _ => [], CancellationToken.None).ConfigureAwait(false);
             }
 
             // Yetişmiş: checkpoint doğrulandı, yeni tam tile yok. Bu da hatasız bir turdur (durma uyarısı için).
@@ -141,6 +141,7 @@ public sealed class StaticCtFollower(
         }
 
         var drafts = new List<CandidateDraft>();
+        var neutralDrafts = new List<NeutralSampleDraft>();
         int examined = 0, unreadable = 0;
         var newest = DateTimeOffset.MinValue;
         TileOutcome? failure = null;
@@ -170,6 +171,7 @@ public sealed class StaticCtFollower(
             }
 
             drafts.AddRange(tile.Candidates);
+            neutralDrafts.AddRange(tile.NeutralSamples);
             examined += tile.Examined;
             unreadable += tile.UnreadableCertificates;
             newest = tile.NewestEntry > newest ? tile.NewestEntry : newest;
@@ -205,9 +207,11 @@ public sealed class StaticCtFollower(
         // 5) Doğrulandı: yaz.
         var observedAt = timeProvider.GetUtcNow();
         var candidates = drafts.Select(d => d.ToEntity(log.Name, observedAt)).ToList();
+        // Tile'lar sırayla eklendiği için örnek taslakları log indeksine göre artan sıradadır (depo bunu bekler).
+        var neutralSamples = neutralDrafts.Select(d => d.ToEntity(log.Name, observedAt)).ToList();
         var newCandidates = 0;
         var trailingSkip = 0L;
-        await store.CommitAsync(state, isNew, candidates, inserted =>
+        var newNeutralDomains = await store.CommitAsync(state, isNew, candidates, neutralSamples, inserted =>
         {
             newCandidates = inserted;
             state.ObserveCheckpoint(checkpoint.Size, checkpoint.RootHash, checkpoint.Timestamp, replacePending: pendingChecked);
@@ -235,6 +239,7 @@ public sealed class StaticCtFollower(
         }, CancellationToken.None).ConfigureAwait(false);
 
         metrics.Processed(log.Name, examined, unreadable + trailingSkip, newCandidates);
+        metrics.NeutralSampled(log.Name, newNeutralDomains);
         if (newest > DateTimeOffset.MinValue)
         {
             metrics.Lag(log.Name, observedAt - newest);
@@ -359,7 +364,7 @@ public sealed class StaticCtFollower(
     {
         var now = timeProvider.GetUtcNow();
         var skipped = 0L;
-        await store.CommitAsync(run.State, run.IsNew, [], _ =>
+        await store.CommitAsync(run.State, run.IsNew, [], [], _ =>
         {
             skipped = RecordRangeFailure(run.State, now, skipEnd);
             return [Error(run.StartedAt, kind, httpStatus, run.Requests, skipped, run.RangeStart, attemptedEnd)];
@@ -403,8 +408,8 @@ public sealed class StaticCtFollower(
         }
     }
 
-    private Task WriteLogOnlyAsync(CollectionLogEntry entry) =>
-        store.CommitAsync(null, isNew: false, [], _ => [entry], CancellationToken.None);
+    private Task<int> WriteLogOnlyAsync(CollectionLogEntry entry) =>
+        store.CommitAsync(null, isNew: false, [], [], _ => [entry], CancellationToken.None);
 
     private CollectionLogEntry Error(
         DateTimeOffset startedAt, CollectionErrorKind kind, int? httpStatus, int attempts, long skipped, long? rangeStart, long? rangeEnd)

@@ -125,6 +125,10 @@ if (command == "worker")
 }
 else if (command == "ct-follow")
 {
+    // Tarafsız örneklem açıksa tuz zorunlu: Akış örneklemsiz başlarsa kaybedilen günler geri gelmez.
+    var neutralOptions = new NeutralSampleOptions();
+    builder.Configuration.GetSection(NeutralSampleOptions.SectionName).Bind(neutralOptions);
+    neutralOptions.ValidateForFollow();
     builder.Services.AddHostedService<CtFollowWorker>();
 }
 else if (command == "archive-sample")

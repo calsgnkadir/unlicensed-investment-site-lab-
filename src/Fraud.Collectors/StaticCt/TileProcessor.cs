@@ -11,6 +11,15 @@ public sealed record CandidateDraft(
         Certificate.DnsNames, MatchedTerms, observedAt);
 }
 
+/// <summary>
+/// Tarafsız örneğe giren bir kayıtlı alan adı ve onu taşıyan log kaydı. Yalnızca bellekte; loglanmaz (Kural 4).
+/// </summary>
+public sealed record NeutralSampleDraft(string RegistrableDomain, long EntryIndex, DateTimeOffset LoggedAt, DateTimeOffset? NotBefore)
+{
+    public CtNeutralSample ToEntity(string logName, DateTimeOffset observedAt) =>
+        new(RegistrableDomain, logName, EntryIndex, LoggedAt, NotBefore, observedAt);
+}
+
 /// <summary>İşlenmiş bir tam veri tile'ı: Merkle için yaprak özetleri, aday taslakları ve sayılar.</summary>
 public sealed record ProcessedTile(
     long TileIndex,
@@ -25,6 +34,9 @@ public sealed record ProcessedTile(
 {
     public int Entries => LeafHashes.Count;
 
+    /// <summary>Tarafsız örneğe giren (kayıtlı alan adı, kayıt) çiftleri. Örnekleyici yoksa boş.</summary>
+    public IReadOnlyList<NeutralSampleDraft> NeutralSamples { get; init; } = [];
+
     /// <summary>Sertifikası okunup filtreden geçirilen kayıt sayısı.</summary>
     public int Examined => Entries - UnreadableCertificates;
 }
@@ -33,7 +45,12 @@ public sealed record ProcessedTile(
 /// Bir veri tile'ını ayrıştırır, her kaydın yaprak özetini hesaplar ve saklama filtresini uygular.
 /// Ham tile burada biter; dışarıya yalnızca özetler, sayılar ve filtreden geçen taslaklar çıkar.
 /// </summary>
-public sealed class TileProcessor(ICandidateFilter filter)
+/// <remarks>
+/// İki kural birbirinden bağımsızdır: Kelime filtresi (<paramref name="filter"/>) ct_candidates'ı, tarafsız örnekleyici
+/// (<paramref name="neutralSampler"/>) ct_neutral_sample'ı besler. Örnekleyici kelime filtresinin sonucuna bakmaz;
+/// böylece örneklem kelimeden bağımsız kalır (Çerçeve N).
+/// </remarks>
+public sealed class TileProcessor(ICandidateFilter filter, NeutralSampler? neutralSampler = null)
 {
     /// <exception cref="InvalidDataException">Tile biçimi bozuk; tile'ın tamamı reddedilir.</exception>
     public ProcessedTile Process(ReadOnlyMemory<byte> tile, long tileIndex, bool collectLifetimes = false)
@@ -41,6 +58,7 @@ public sealed class TileProcessor(ICandidateFilter filter)
         var entries = DataTileParser.Parse(tile, tileIndex * TilePath.Width, TilePath.Width);
         var hashes = new byte[entries.Count][];
         var candidates = new List<CandidateDraft>();
+        var neutral = new List<NeutralSampleDraft>();
         var lifetimes = new List<TimeSpan>();
         int x509 = 0, precert = 0, unreadable = 0, noNames = 0;
         var newest = DateTimeOffset.MinValue;
@@ -81,6 +99,14 @@ public sealed class TileProcessor(ICandidateFilter filter)
                 continue;
             }
 
+            if (neutralSampler is not null)
+            {
+                foreach (var domain in neutralSampler.Select(summary.DnsNames))
+                {
+                    neutral.Add(new NeutralSampleDraft(domain, entry.Index, entry.Timestamp, summary.NotBefore));
+                }
+            }
+
             var matched = filter.Match(summary.DnsNames);
             if (matched.Count > 0)
             {
@@ -88,6 +114,9 @@ public sealed class TileProcessor(ICandidateFilter filter)
             }
         }
 
-        return new ProcessedTile(tileIndex, hashes, candidates, x509, precert, unreadable, noNames, newest, lifetimes);
+        return new ProcessedTile(tileIndex, hashes, candidates, x509, precert, unreadable, noNames, newest, lifetimes)
+        {
+            NeutralSamples = neutral,
+        };
     }
 }

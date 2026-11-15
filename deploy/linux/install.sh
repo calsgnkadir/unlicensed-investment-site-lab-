@@ -143,6 +143,16 @@ ensure_env GRAFANA_PORT 53000 \
 # Bu klasörde -f yazmadan çalışan "docker compose ..." komutları da iki dosyayı birlikte okusun.
 ensure_env COMPOSE_FILE "docker-compose.ct.yml:docker-compose.monitoring.yml" \
     "Bu klasörde 'docker compose' iki dosyayı birlikte kullanır (veri + izleme)."
+# Tarafsız CT örnekleminin tuzu (32 bayt). Yalnızca ilk kez üretilir; var olan satıra dokunulmaz, değer basılmaz.
+# Tuz değişirse örneklemin tamamı değişir ve biriken veri yeni örnekle birleştirilemez (KONTROL_GRUBU_YONTEMI.md 4.5).
+if grep -Eq '^CT_NEUTRAL_SALT=' "$ENV_FILE"; then
+    if ! grep -Eq '^CT_NEUTRAL_SALT=[0-9a-f]{64}$' "$ENV_FILE"; then
+        fail ".env: CT_NEUTRAL_SALT 64 karakterlik onaltılık değer değil. Elle düzeltin; betik var olan tuzu değiştirmez."
+    fi
+else
+    ensure_env CT_NEUTRAL_SALT "$(random_hex)" \
+        "Tarafsız CT örnekleminin tuzu. DEĞİŞTİRMEYİN, paylaşmayın. Değişirse örnek baştan başlar."
+fi
 chmod 600 "$ENV_FILE"
 
 # Grafana parolası: yoksa üretilir, varsa dokunulmaz. Hiçbir zaman ekrana basılmaz.

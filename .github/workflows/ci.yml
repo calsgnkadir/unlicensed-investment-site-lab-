@@ -61,6 +61,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: ci-only-not-a-secret
           GRAFANA_ADMIN_PASSWORD: ci-only-not-a-secret
+          CT_NEUTRAL_SALT: ci-only-not-a-secret
         run: |
           docker compose -f deploy/linux/docker-compose.ct.yml config -q
           docker compose -f deploy/linux/docker-compose.ct.yml -f deploy/linux/docker-compose.monitoring.yml config -q

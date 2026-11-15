@@ -769,6 +769,71 @@
       }
     },
     {
+      "type": "stat",
+      "title": "Tarafsız örnek: yeni alan adı (24 saat)",
+      "id": 44,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "ct_neutral_sample tablosuna son 24 saatte ilk kez giren kayıtlı alan adı (kelimeye bakılmadan ~%1). Yalnızca sayı; alan adı etikete girmez. Sıfırsa örneklem durmuş olabilir (status.sh).",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (log) (increase(fraud_ct_neutral_sample_total[1d]))",
+          "legendFormat": "{{log}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 35
+      }
+    },
+    {
       "type": "row",
       "title": "DNS ve ağ kaydı",
       "id": 17,
@@ -777,7 +842,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 41
       },
       "panels": []
     },
@@ -826,7 +891,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 36
+        "y": 42
       }
     },
     {
@@ -893,7 +958,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 36
+        "y": 42
       }
     },
     {
@@ -963,7 +1028,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 36
+        "y": 42
       }
     },
     {
@@ -1017,7 +1082,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 44
+        "y": 50
       }
     },
     {
@@ -1076,7 +1141,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 44
+        "y": 50
       }
     },
     {
@@ -1126,7 +1191,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 44
+        "y": 50
       }
     },
     {
@@ -1138,7 +1203,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 58
       },
       "panels": []
     },
@@ -1206,7 +1271,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 53
+        "y": 59
       }
     },
     {
@@ -1260,7 +1325,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 53
+        "y": 59
       }
     },
     {
@@ -1319,7 +1384,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 53
+        "y": 59
       }
     },
     {
@@ -1331,7 +1396,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 61
+        "y": 67
       },
       "panels": []
     },
@@ -1391,7 +1456,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 62
+        "y": 68
       }
     },
     {
@@ -1459,7 +1524,7 @@
         "h": 8,
         "w": 4,
         "x": 12,
-        "y": 62
+        "y": 68
       }
     },
     {
@@ -1509,7 +1574,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 62
+        "y": 68
       }
     },
     {
@@ -1521,7 +1586,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 76
       },
       "panels": []
     },
@@ -1586,7 +1651,7 @@
         "h": 7,
         "w": 4,
         "x": 0,
-        "y": 71
+        "y": 77
       }
     },
     {
@@ -1650,7 +1715,7 @@
         "h": 7,
         "w": 4,
         "x": 4,
-        "y": 71
+        "y": 77
       }
     },
     {
@@ -1714,7 +1779,7 @@
         "h": 7,
         "w": 4,
         "x": 8,
-        "y": 71
+        "y": 77
       }
     },
     {
@@ -1766,7 +1831,7 @@
         "h": 7,
         "w": 6,
         "x": 12,
-        "y": 71
+        "y": 77
       }
     },
     {
@@ -1818,7 +1883,7 @@
         "h": 7,
         "w": 6,
         "x": 18,
-        "y": 71
+        "y": 77
       }
     },
     {
@@ -1868,7 +1933,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 78
+        "y": 84
       }
     },
     {
@@ -1918,7 +1983,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 78
+        "y": 84
       }
     },
     {
@@ -1930,7 +1995,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 85
+        "y": 91
       },
       "panels": []
     },
@@ -1981,7 +2046,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 86
+        "y": 92
       }
     },
     {
@@ -2031,7 +2096,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 86
+        "y": 92
       }
     },
     {
@@ -2081,7 +2146,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 86
+        "y": 92
       }
     }
   ]

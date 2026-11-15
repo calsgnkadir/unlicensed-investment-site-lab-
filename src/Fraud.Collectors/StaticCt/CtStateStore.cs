@@ -15,10 +15,13 @@ public interface ICtStateStore
     /// hazırlatır ve hepsini tek veritabanı işleminde kaydeder. "Aday yazıldı ama indeks ilerlemedi" ya da tersi oluşmaz.
     /// </summary>
     /// <param name="state"><see cref="LoadAsync"/> ile okunan nesne; yeni ise <paramref name="isNew"/> doğru.</param>
-    Task CommitAsync(
+    /// <param name="neutralSamples">Tarafsız örneğe giren kayıtlar, log indeksine göre artan sırada.</param>
+    /// <returns>Tarafsız örneğe ilk kez giren kayıtlı alan adı sayısı.</returns>
+    Task<int> CommitAsync(
         CtLogState? state,
         bool isNew,
         IReadOnlyList<CtCandidate> candidates,
+        IReadOnlyList<CtNeutralSample> neutralSamples,
         Func<int, IReadOnlyList<CollectionLogEntry>> finish,
         CancellationToken cancellationToken);
 }
@@ -34,14 +37,16 @@ public sealed class EfCtStateStore(FraudDbContext db) : ICtStateStore
     /// etkilenen satır sayısı yalnızca yeni adayları sayar. İşlem iptal belirteci kullanmaz: Başlamış bir yazma
     /// yarıda kesilmez (iptal, işlemin tamamen yazılması ya da hiç yazılmaması arasında seçim yapmaz).
     /// </remarks>
-    public async Task CommitAsync(
+    public async Task<int> CommitAsync(
         CtLogState? state,
         bool isNew,
         IReadOnlyList<CtCandidate> candidates,
+        IReadOnlyList<CtNeutralSample> neutralSamples,
         Func<int, IReadOnlyList<CollectionLogEntry>> finish,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(candidates);
+        ArgumentNullException.ThrowIfNull(neutralSamples);
         ArgumentNullException.ThrowIfNull(finish);
 
         await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
@@ -58,6 +63,12 @@ public sealed class EfCtStateStore(FraudDbContext db) : ICtStateStore
                 """, CancellationToken.None).ConfigureAwait(false);
         }
 
+        var newNeutralDomains = 0;
+        foreach (var sample in neutralSamples)
+        {
+            newNeutralDomains += await UpsertNeutralSampleAsync(sample).ConfigureAwait(false);
+        }
+
         var entries = finish(inserted);
         if (isNew && state is not null)
         {
@@ -67,5 +78,49 @@ public sealed class EfCtStateStore(FraudDbContext db) : ICtStateStore
         db.CollectionLog.AddRange(entries);
         await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
         await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+        return newNeutralDomains;
+    }
+
+    /// <summary>
+    /// Tarafsız örnek: alan adı başına tek satır. Yeni ad eklenir (1 döner); var olan adın sayacı artar (0 döner).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// İki ayrı, düz SQL cümlesi kullanılır, çünkü okuması kolay: Önce "yoksa ekle", eklenmediyse "sayacı artır".
+    /// <c>ON CONFLICT DO NOTHING</c>, başka bir log izleyicisi aynı adı aynı anda eklese bile çift satır açmaz
+    /// (tekil indeks ux_ct_neutral_sample_domain).
+    /// </para>
+    /// <para>
+    /// İdempotentlik: Sayaç, yalnızca gelen kayıt aynı logda son sayılan kayıttan SONRA ise artar. Aynı aralık iki kez
+    /// işlenirse (ör. durum elle geri alınırsa) aynı kayıt ikinci kez sayılmaz. Normal akışta bu durum zaten olmaz:
+    /// Sayaç artışı, indeksin ilerlemesiyle aynı veritabanı işleminde yazılır.
+    /// </para>
+    /// </remarks>
+    private async Task<int> UpsertNeutralSampleAsync(CtNeutralSample s)
+    {
+        var added = await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ct_neutral_sample
+                (registrable_domain, first_seen_at, first_logged_at, first_not_before, first_log_name, first_entry_index,
+                 last_seen_at, last_log_name, last_entry_index, seen_count)
+            VALUES
+                ({s.RegistrableDomain}, {s.FirstSeenAt}, {s.FirstLoggedAt}, {s.FirstNotBefore}, {s.FirstLogName}, {s.FirstEntryIndex},
+                 {s.LastSeenAt}, {s.LastLogName}, {s.LastEntryIndex}, 1)
+            ON CONFLICT (registrable_domain) DO NOTHING
+            """, CancellationToken.None).ConfigureAwait(false);
+        if (added == 1)
+        {
+            return 1;
+        }
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE ct_neutral_sample
+            SET seen_count = seen_count + 1,
+                last_seen_at = {s.LastSeenAt},
+                last_log_name = {s.LastLogName},
+                last_entry_index = {s.LastEntryIndex}
+            WHERE registrable_domain = {s.RegistrableDomain}
+              AND NOT (last_log_name = {s.LastLogName} AND last_entry_index >= {s.LastEntryIndex})
+            """, CancellationToken.None).ConfigureAwait(false);
+        return 0;
     }
 }

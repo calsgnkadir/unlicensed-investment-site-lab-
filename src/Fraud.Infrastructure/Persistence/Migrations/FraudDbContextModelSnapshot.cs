@@ -246,6 +246,78 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Fraud.Domain.CertificateTransparency.CtNeutralSample", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("FirstEntryIndex")
+                        .HasColumnType("bigint")
+                        .HasColumnName("first_entry_index");
+
+                    b.Property<string>("FirstLogName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("first_log_name");
+
+                    b.Property<DateTimeOffset>("FirstLoggedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_logged_at");
+
+                    b.Property<DateTimeOffset?>("FirstNotBefore")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_not_before");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<long>("LastEntryIndex")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_entry_index");
+
+                    b.Property<string>("LastLogName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("last_log_name");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<string>("RegistrableDomain")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("registrable_domain");
+
+                    b.Property<long>("SeenCount")
+                        .HasColumnType("bigint")
+                        .HasColumnName("seen_count");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FirstSeenAt")
+                        .HasDatabaseName("ix_ct_neutral_sample_first_seen_at");
+
+                    b.HasIndex("RegistrableDomain")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ct_neutral_sample_domain");
+
+                    b.ToTable("ct_neutral_sample", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_ct_neutral_sample_counts", "seen_count >= 1 AND first_entry_index >= 0 AND last_entry_index >= 0");
+
+                            t.HasCheckConstraint("ck_ct_neutral_sample_domain", "length(btrim(registrable_domain)) > 0");
+                        });
+                });
+
             modelBuilder.Entity("Fraud.Domain.Certificates.Certificate", b =>
                 {
                     b.Property<long>("Id")

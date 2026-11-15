@@ -94,6 +94,21 @@ varsayılanı değişmez.
 
 Ayar değişince: `docker compose -f docker-compose.ct.yml up -d` (yalnızca değişen servis yeniden başlar).
 
+## Tarafsız CT örneklemi (`ct_neutral_sample`)
+
+`ct-follow`, kelime filtresinden bağımsız ikinci bir kural uygular: Her kayıttaki kayıtlı alan adı için
+`SHA-256(tuz || alan_adı)` değerinin ilk 8 baytı `oran × 2^64` değerinden küçükse alan adı saklanır (varsayılan oran
+0,01). Kural kelimeye bakmaz; kontrol grubunun "Çerçeve N"i buradan seçilir
+([KONTROL_GRUBU_YONTEMI.md](../../docs/research/KONTROL_GRUBU_YONTEMI.md) 4.5, karar 3).
+
+- **Tuz:** `install.sh` ilk çalıştırmada `.env` içine `CT_NEUTRAL_SALT` (32 bayt, onaltılık) yazar. Var olan tuza
+  dokunmaz ve hiçbir zaman ekrana basmaz. Tuzu değiştirmeyin: Değişirse örnek baştan başlar. Tuz yoksa compose ve
+  `ct-follow` başlamaz (örnek sessizce kapalı kalmasın diye).
+- **Eski kurulumu güncelleme:** `git pull` sonra `./install.sh`. Betik eksik tuzu ekler, `migrate` yeni tabloyu kurar.
+- **Oran:** `.env` içinde `CT_NEUTRAL_RATE` (yoksa 0,01). Karar 3'e göre yalnızca dondurmadan önce bir kez değişir.
+- **Gizlilik (Kural 4):** Tablo listede olmayan adlar içerir. `status.sh`, Grafana (`fraud_ct_neutral_sample_total`)
+  ve loglar yalnızca sayı gösterir.
+
 ## Günlük ağ kaydı (`network` servisi)
 
 `network` servisi `worker` komutunu şu sırayla çalıştırır, sonra 24 saat bekler:

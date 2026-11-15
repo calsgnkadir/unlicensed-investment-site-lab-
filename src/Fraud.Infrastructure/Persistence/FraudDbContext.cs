@@ -28,6 +28,8 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
 
     public DbSet<CtLogState> CtLogStates => Set<CtLogState>();
 
+    public DbSet<CtNeutralSample> CtNeutralSamples => Set<CtNeutralSample>();
+
     public DbSet<DnsSnapshot> DnsSnapshots => Set<DnsSnapshot>();
 
     public DbSet<IpAsnSnapshot> IpAsnSnapshots => Set<IpAsnSnapshot>();
@@ -290,6 +292,35 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
             e.Property(x => x.ConsecutiveFailures).HasColumnName("consecutive_failures").IsRequired();
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").IsRequired();
             e.Ignore(x => x.Coverage);
+        });
+
+        // Tarafsız örneklem (Çerçeve N). Listede olmayan adlar içerir (Kural 4): Dışarıya yalnızca sayısı çıkar.
+        modelBuilder.Entity<CtNeutralSample>(e =>
+        {
+            e.ToTable("ct_neutral_sample", t =>
+            {
+                t.HasCheckConstraint("ck_ct_neutral_sample_domain", "length(btrim(registrable_domain)) > 0");
+                t.HasCheckConstraint("ck_ct_neutral_sample_counts", "seen_count >= 1 AND first_entry_index >= 0 AND last_entry_index >= 0");
+                // Bilerek "last_seen_at >= first_seen_at" denetimi yok: Saat geri giderse (NTP düzeltmesi) bütün tur
+                // yazılamaz ve akış takılırdı.
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.RegistrableDomain).HasColumnName("registrable_domain").HasMaxLength(253).IsRequired();
+            e.Property(x => x.FirstSeenAt).HasColumnName("first_seen_at").IsRequired();
+            e.Property(x => x.FirstLoggedAt).HasColumnName("first_logged_at").IsRequired();
+            e.Property(x => x.FirstNotBefore).HasColumnName("first_not_before");
+            e.Property(x => x.FirstLogName).HasColumnName("first_log_name").HasMaxLength(64).IsRequired();
+            e.Property(x => x.FirstEntryIndex).HasColumnName("first_entry_index").IsRequired();
+            e.Property(x => x.LastSeenAt).HasColumnName("last_seen_at").IsRequired();
+            e.Property(x => x.LastLogName).HasColumnName("last_log_name").HasMaxLength(64).IsRequired();
+            e.Property(x => x.LastEntryIndex).HasColumnName("last_entry_index").IsRequired();
+            e.Property(x => x.SeenCount).HasColumnName("seen_count").IsRequired();
+
+            // Alan adı başına tek satır: ilk görülme kalır, sonrakiler seen_count'u artırır.
+            e.HasIndex(x => x.RegistrableDomain).IsUnique().HasDatabaseName("ux_ct_neutral_sample_domain");
+            // Haftalık tabakalama "ilk görülme haftası"na göre yapılır (KONTROL_GRUBU_YONTEMI.md 4.5).
+            e.HasIndex(x => x.FirstSeenAt).HasDatabaseName("ix_ct_neutral_sample_first_seen_at");
         });
     }
 

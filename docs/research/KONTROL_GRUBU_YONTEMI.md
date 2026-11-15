@@ -498,4 +498,10 @@ Kadircan bu bölümdeki 10 kararı aşağıdaki şekliyle onayladı. Belge, bu b
 
 ## Değişiklik kaydı
 
+- 2026-11-15 (önceden kayıttan sonra, hiçbir sonuç görülmeden): Tarafsız örneklem (4.5) uygulanırken iki uygulama farkı oluştu.
+  1. **Seçim kuralı:** "Özet mod 100 = 0" yerine "SHA-256(tuz || alan adı) değerinin ilk 8 baytı < oran × 2^64" kuralı kullanıldı. İkisi de yaklaşık %1 seçer. Yeni kuralın farkı şu: Oran ileride artırılırsa, daha önce seçilmiş alan adları yine seçilmiş kalır.
+  2. **Saklanan veri:** Alan adının bütün sertifikaları değil, alan adı başına tek satır saklanır: ilk görülme zamanı, ilk sertifikanın not_before değeri ve görülme sayısı. Bu yüzden "sertifika yenileme düzeni" gibi sertifika başına hesaplanan sinyaller tarafsız kontrol çerçevesinde (N) hesaplanamaz. Bu sinyaller yalnızca K çerçevesinde ya da crt.sh verisiyle raporlanır.
+  
+  PSL'nin özel bölümündeki adlar (paylaşımlı barındırma alt alanları) örnekte kalır, çünkü N_tüm sayımı için gerekirler. Kontrol grubu seçilirken 1.1'deki kurala göre elenirler.
+
 - 2026-11-15: İlk sürüm (öneri). Henüz onaylanmadı ve donmadı.

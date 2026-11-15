@@ -181,7 +181,8 @@ public static class StaticCtFollowerFactory
             logNumber,
             services.GetRequiredService<IStaticCtClientFactory>().Create(log),
             services.GetRequiredService<ICtStateStore>(),
-            new TileProcessor(services.GetRequiredService<ICandidateFilter>()),
+            // Örnekleyici yalnızca tuz ayarlandıysa kayıtlıdır (bkz. AddStaticCt); ct-follow tuzsuz başlamaz (Program.cs).
+            new TileProcessor(services.GetRequiredService<ICandidateFilter>(), services.GetService<NeutralSampler>()),
             services.GetRequiredService<StaticCtOptions>(),
             services.GetRequiredService<CollectionOptions>(),
             services.GetRequiredService<StaticCtMetrics>(),

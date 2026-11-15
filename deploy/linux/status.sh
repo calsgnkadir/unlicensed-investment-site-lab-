@@ -224,6 +224,20 @@ echo "(tahmini_indirme_gb = işlenen tile x ${AVG_TILE_KB} KB; hash tile ve tekr
 echo "(son_1_saat_islenen 0 ise: log durmuş, dilim kapanmış veya izleyici hata alıyor olabilir.)"
 
 echo
+echo "== Tarafsız CT örneklemi (ct_neutral_sample, yalnızca sayı) =="
+psql_run <<'SQL'
+SELECT first_log_name                                                  AS ilk_log,
+       count(*)                                                        AS alan_adi,
+       count(*) FILTER (WHERE first_seen_at >= now() - interval '24 hours') AS son_24_saat_yeni,
+       coalesce(sum(seen_count), 0)                                    AS gorulen_kayit,
+       date_trunc('second', now() - max(last_seen_at))                 AS son_kayittan_beri
+FROM ct_neutral_sample
+GROUP BY first_log_name
+ORDER BY first_log_name;
+SQL
+echo "(Oran ~%1, kelimeye bakılmadan. Tablo boşsa: ct-follow tuzsuz başlamış olamaz; migration veya akışı kontrol edin.)"
+
+echo
 echo "== Son 24 saatte hata türleri =="
 psql_run <<'SQL'
 SELECT ct_log_name AS log, error_kind AS hata_turu, count(*) AS adet
@@ -328,6 +342,7 @@ echo "== Veritabanı boyutu =="
 psql_run <<'SQL'
 SELECT pg_size_pretty(pg_database_size(current_database()))          AS veritabani,
        pg_size_pretty(pg_total_relation_size('ct_candidates'))       AS ct_candidates,
+       pg_size_pretty(pg_total_relation_size('ct_neutral_sample'))   AS ct_neutral_sample,
        pg_size_pretty(pg_total_relation_size('collection_log'))      AS collection_log,
        pg_size_pretty(pg_total_relation_size('dns_snapshots'))       AS dns_snapshots;
 SQL

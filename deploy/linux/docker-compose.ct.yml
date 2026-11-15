@@ -135,6 +135,11 @@ services:
       StaticCt__MaxConcurrency: ${CT_MAX_CONCURRENCY:-4}
       # Etkin her log hatasız bir tur bitirdikçe yenilenir; sağlık kontrolü yaşına bakar.
       StaticCt__HeartbeatFile: /tmp/ct-follow.heartbeat
+      # Tarafsız örneklem (Çerçeve N, KONTROL_GRUBU_YONTEMI.md 4.5): kayıtlı alan adlarının ~%1'i, kelimeye bakılmadan.
+      # Tuz .env içinde (install.sh bir kez üretir). Tuz yoksa compose başlamaz; ct-follow da tuzsuz başlamaz.
+      # Oran yalnızca dondurmadan önce bir kez değiştirilebilir (karar 3).
+      NeutralSample__Salt: ${CT_NEUTRAL_SALT:?CT_NEUTRAL_SALT .env dosyasında tanımlı olmalı (install.sh üretir)}
+      NeutralSample__Rate: ${CT_NEUTRAL_RATE:-0.01}
       # Metrikler: konteynerin içinde 9464 (yayımlanmaz). Tablo tazeliği yalnızca bu süreçte, dakikada bir okunur.
       Metrics__Enabled: "true"
       Metrics__Host: "*"
