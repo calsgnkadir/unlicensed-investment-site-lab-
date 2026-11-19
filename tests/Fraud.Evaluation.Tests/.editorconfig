@@ -1,0 +1,6 @@
+# Test projesine özel kural ayarları.
+[*.cs]
+# Test adlarında alt çizgi okunabilirlik içindir (Ne_yapildi_ne_bekleniyor).
+dotnet_diagnostic.CA1707.severity = none
+# Testlerde senkronizasyon bağlamı yoktur; ConfigureAwait gerekmez.
+dotnet_diagnostic.CA2007.severity = none

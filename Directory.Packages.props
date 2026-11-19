@@ -21,6 +21,8 @@
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.21.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.HttpListener" Version="1.21.0-beta.1" />
     <PackageVersion Include="Polly.Core" Version="8.9.1" />
+    <!-- RFC 3161 zaman damgası cevabını (.tsr) çevrimdışı doğrulamak için (E10). Ağa bağlanmaz. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />

@@ -11,5 +11,8 @@
     <InvariantGlobalization>false</InvariantGlobalization>
     <!-- Paket bağımlılıkları kilit dosyasıyla sabitlenir; CI aynı sürümleri geri yükler. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Derlendiği commit, AssemblyInformationalVersion içine "+sha" olarak yazılır (SDK, .git klasöründen okur).
+         Kilitli test, çalışan programın commit'ini HEAD ile karşılaştırır (E9). -->
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>

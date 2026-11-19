@@ -1,0 +1,26 @@
+{
+  // Örnek yapılandırma. Değerler EvaluationConfig varsayılanlarıyla aynıdır. Onay bekleyenler işaretli.
+  "seed": "eval-2026-11-15",
+  "tuningBulletins": { "from": "2026/1", "to": "2026/18" },
+  "historicalBulletins": { "from": "2026/20", "to": "2026/77" },
+  "freezeDate": null,
+  "lockedWindowDays": 28,
+  "controlTuningShare": 0.70,
+  // Onay bekliyor: kontrol referansı = ilk sertifika + ayar pozitiflerinden çekilen gecikme.
+  "controlReference": "MatchedLag",
+  // Onay bekliyor: eşik ayar kontrollerinde (G3 + G4) %1 yanlış alarm.
+  "targetFalseAlarmRate": 0.01,
+  "calibrationGroups": [ "ControlHardNegative", "ControlRandom" ],
+  // Onay bekliyor.
+  "bootstrapIterations": 2000,
+  // VARSAYIM, ölçülmedi.
+  "baseRate": 0.001,
+  "dailyNewDomains": null,
+  "minCountForRates": 10,
+  // Onay bekliyor: Wayback dizine girme payı.
+  "archiveKnownDelayDays": 7,
+  // Bir grubun "veri var mı" oranı pozitiflerden bu kadar farklıysa rapor uyarır.
+  "coverageWarningGap": 0.20,
+  "signal": { "name": "random", "seed": "random-2026-11-15" }
+  // Kilit dosyasının yolu yapılandırmada YOKTUR: kodda sabit, depo köküne bağlı (E1).
+}

@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Fraud.Domain\Fraud.Domain.csproj" />
+    <ProjectReference Include="..\Fraud.Evaluation\Fraud.Evaluation.csproj" />
     <ProjectReference Include="..\Fraud.Infrastructure\Fraud.Infrastructure.csproj" />
   </ItemGroup>
 
@@ -15,6 +16,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Polly.Core" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>
 
   <ItemGroup>

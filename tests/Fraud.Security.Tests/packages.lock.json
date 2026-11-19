@@ -477,14 +477,22 @@
         "dependencies": {
           "CsvHelper": "[33.1.0, )",
           "Fraud.Domain": "[1.0.0, )",
+          "Fraud.Evaluation": "[1.0.0, )",
           "Fraud.Infrastructure": "[1.0.0, )",
           "Microsoft.Extensions.Hosting": "[10.0.14, )",
           "Microsoft.Extensions.Http": "[10.0.14, )",
-          "Polly.Core": "[8.9.1, )"
+          "Polly.Core": "[8.9.1, )",
+          "System.Security.Cryptography.Pkcs": "[10.0.14, )"
         }
       },
       "fraud.domain": {
         "type": "Project"
+      },
+      "fraud.evaluation": {
+        "type": "Project",
+        "dependencies": {
+          "Fraud.Domain": "[1.0.0, )"
+        }
       },
       "fraud.infrastructure": {
         "type": "Project",
@@ -630,6 +638,12 @@
         "requested": "[8.9.1, )",
         "resolved": "8.9.1",
         "contentHash": "L0vfggkkI2nDAW9lCFYSqX9g/+3TkVXhAq+sh6owBq656X9XW0kE2NG+dPYGNQGeK66HS1rKHRPWMm1bMv91kw=="
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "Wz+IgL2xpg8KJ4i2VWj6uz1PmZNu4Q0Ljlwd73P9Vze5NcOBtctLii3itV0PB2MpOqwqDEGfB6RCdv94A4E5yQ=="
       }
     }
   }

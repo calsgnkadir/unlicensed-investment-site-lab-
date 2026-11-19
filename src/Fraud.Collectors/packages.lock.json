@@ -58,6 +58,12 @@
         "resolved": "8.9.1",
         "contentHash": "L0vfggkkI2nDAW9lCFYSqX9g/+3TkVXhAq+sh6owBq656X9XW0kE2NG+dPYGNQGeK66HS1rKHRPWMm1bMv91kw=="
       },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "Direct",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "Wz+IgL2xpg8KJ4i2VWj6uz1PmZNu4Q0Ljlwd73P9Vze5NcOBtctLii3itV0PB2MpOqwqDEGfB6RCdv94A4E5yQ=="
+      },
       "Microsoft.EntityFrameworkCore.Abstractions": {
         "type": "Transitive",
         "resolved": "10.0.14",
@@ -375,6 +381,12 @@
       },
       "fraud.domain": {
         "type": "Project"
+      },
+      "fraud.evaluation": {
+        "type": "Project",
+        "dependencies": {
+          "Fraud.Domain": "[1.0.0, )"
+        }
       },
       "fraud.infrastructure": {
         "type": "Project",

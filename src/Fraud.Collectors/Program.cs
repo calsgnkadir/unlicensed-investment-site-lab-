@@ -1,6 +1,7 @@
 using Fraud.Collectors;
 using Fraud.Collectors.Collection;
 using Fraud.Collectors.Dns;
+using Fraud.Collectors.Evaluation;
 using Fraud.Collectors.Monitoring;
 using Fraud.Collectors.Network;
 using Fraud.Collectors.PortAudit;
@@ -36,6 +37,12 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- archive-sample [--count 20] [--seed <metin>] [--out data/private/phase0/arsiv_icerik]
 //   dotnet run --project src/Fraud.Collectors -- port-audit [--once true]                (yalnızca Linux; veritabanı gerekmez)
 //   dotnet run --project src/Fraud.Collectors -- port-audit-exporter                     (port-audit durum dosyasını sunar)
+//   dotnet run --project src/Fraud.Collectors -- eval-run --mode Historical|Locked --config <dosya> [--controls <csv>] [--clusters <csv>] [--commit <sha>]
+//   dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --config <dosya> --commitment <açık dosya> --opening <açıklama>
+//   dotnet run --project src/Fraud.Collectors -- commit-create --records <dosya> --name <ad> --public-out <dosya> [--previous <dosya>]
+//   dotnet run --project src/Fraud.Collectors -- commit-prove --opening <dosya> --index <i>
+//   dotnet run --project src/Fraud.Collectors -- commit-verify --public <dosya> --proof <dosya> [--record <ad>] [--previous <dosya>]
+//   (Ölçüm ve taahhüt komutları yalnızca toplu sayı basar; bkz. src/Fraud.Evaluation/README.md.)
 // Bağlantı metni: ConnectionStrings__FraudDb ortam değişkeni veya user-secrets.
 // Çıkış kodu: 0 = temiz, 2 = reddedilen/çakışan satır veya hatalı toplama var, 1 = hata, 64 = hatalı kullanım,
 //             75 = ağ kaynağını başka bir süreç topluyor (kilit alınamadı, sorgu atılmadı).
@@ -45,12 +52,14 @@ const string Usage =
     "collect-wayback [--force true] | collect-dns [--force true] | collect-ripestat [--force true] | " +
     "collect-internetdb [--force true] | dns-compare [--day YYYY-AA-GG] | worker | quality-report | ct-follow | migrate | " +
     "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true] | " +
-    "archive-sample [--count N] [--seed <metin>] [--out <klasör>] | port-audit [--once true] | port-audit-exporter>";
+    "archive-sample [--count N] [--seed <metin>] [--out <klasör>] | port-audit [--once true] | port-audit-exporter | " +
+    "eval-run --mode <kip> --config <dosya> | commit-create | commit-prove | commit-verify>";
 
 var command = args.Length > 0 ? args[0] : string.Empty;
 if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"
     or "ct-follow" or "ct-sample" or "migrate" or "archive-sample"
-    or "collect-dns" or "collect-ripestat" or "collect-internetdb" or "dns-compare" or "port-audit" or "port-audit-exporter"))
+    or "collect-dns" or "collect-ripestat" or "collect-internetdb" or "dns-compare" or "port-audit" or "port-audit-exporter"
+    or "eval-run" or "commit-create" or "commit-prove" or "commit-verify"))
 {
     await Console.Error.WriteLineAsync(Usage).ConfigureAwait(false);
     return 64;
@@ -60,6 +69,18 @@ if (command == "ct-sample")
 {
     // Veritabanı gerekmez: Hiçbir şey yazılmaz, yalnızca sayılar basılır.
     return await CtSampleCommand.RunAsync(args.Skip(1).ToArray()).ConfigureAwait(false);
+}
+
+if (command is "commit-create" or "commit-prove" or "commit-verify")
+{
+    // Veritabanı ve ağ gerekmez: Dosya okur, dosya yazar, yalnızca sayı ve kök basar.
+    var commitArgs = EvaluationCommands.ParseArgs(args.Skip(1).ToArray());
+    return command switch
+    {
+        "commit-create" => await EvaluationCommands.CommitCreateAsync(commitArgs, Console.Out, CancellationToken.None).ConfigureAwait(false),
+        "commit-prove" => await EvaluationCommands.CommitProveAsync(commitArgs, Console.Out, CancellationToken.None).ConfigureAwait(false),
+        _ => await EvaluationCommands.CommitVerifyAsync(commitArgs, Console.Out, CancellationToken.None).ConfigureAwait(false),
+    };
 }
 
 if (command is "port-audit" or "port-audit-exporter")
@@ -236,6 +257,18 @@ switch (command)
         var report = await scope.ServiceProvider.GetRequiredService<QualityReportBuilder>().BuildAsync(stop.Token).ConfigureAwait(false);
         await Console.Out.WriteAsync(report.ToText()).ConfigureAwait(false);
         return 0;
+    }
+
+    case "eval-run":
+    {
+        await using var scope = host.Services.CreateAsyncScope();
+        return await EvaluationCommands.EvalRunAsync(
+            scope.ServiceProvider.GetRequiredService<FraudDbContext>(),
+            scope.ServiceProvider.GetRequiredService<Fraud.Domain.DomainNames.IDomainNameNormalizer>(),
+            EvaluationCommands.ParseArgs(args.Skip(1).ToArray()),
+            Console.Out,
+            stop.Token,
+            RepoContext.Find(gitPath: builder.Configuration["Git:Path"])).ConfigureAwait(false);
     }
 
     case "archive-sample":

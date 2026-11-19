@@ -1,5 +1,8 @@
 # Gizli veri: Şüpheli liste, kontrol grubu, port verisi
 data/private/
+# Komut depo kökü dışında bir klasörden çalışsa bile iç içe gizli klasör ve açıklama dosyası git dışında kalsın (E2).
+**/data/private/
+*.opening.json
 
 # Ham ve geçici veri
 data/raw/

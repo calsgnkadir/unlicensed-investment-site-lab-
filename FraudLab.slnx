@@ -3,9 +3,11 @@
     <Project Path="src/Fraud.Api/Fraud.Api.csproj" />
     <Project Path="src/Fraud.Collectors/Fraud.Collectors.csproj" />
     <Project Path="src/Fraud.Domain/Fraud.Domain.csproj" />
+    <Project Path="src/Fraud.Evaluation/Fraud.Evaluation.csproj" />
     <Project Path="src/Fraud.Infrastructure/Fraud.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Fraud.Evaluation.Tests/Fraud.Evaluation.Tests.csproj" />
     <Project Path="tests/Fraud.Integration.Tests/Fraud.Integration.Tests.csproj" />
     <Project Path="tests/Fraud.Security.Tests/Fraud.Security.Tests.csproj" />
   </Folder>

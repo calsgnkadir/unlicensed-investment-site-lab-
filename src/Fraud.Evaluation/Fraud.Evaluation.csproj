@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Ölçüm altyapısı (Hafta 6). Yalnızca Domain'e bağlı: Veritabanı ve dosya yükleyici Collectors'ta durur. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fraud.Domain\Fraud.Domain.csproj" />
+  </ItemGroup>
+</Project>
