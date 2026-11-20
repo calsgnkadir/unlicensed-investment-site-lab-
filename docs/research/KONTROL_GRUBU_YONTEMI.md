@@ -498,6 +498,19 @@ Kadircan bu bölümdeki 10 kararı aşağıdaki şekliyle onayladı. Belge, bu b
 
 ## Değişiklik kaydı
 
+- 2026-11-20 (Kadircan onayı, hiçbir sonuç görülmeden). Kurulabilirlik incelemesinin ([KONTROL_LISTESI_KURULUM.md](KONTROL_LISTESI_KURULUM.md), Bölüm 5.4 ve 7) ardından şu değişiklikler kabul edildi:
+  1. **G1:** Resmi kaynakta web adresi yalnızca BDDK banka listesinde var. Bu yüzden G1 yaklaşık 66 kurumdan oluşur. TSPB üye listesi web adresi içeriyorsa aracı kurumlar da G1'e girer. Bu durum kontrol edilir ve sonucu buraya yazılır.
+  2. **crt.sh:** İki istek arasında en az 15 saniye beklenir. crt.sh işletmecisi dakikada 5 istek sınırı bildirdi. ROADMAP'teki "5 saniyede 1" hızı bu sınırı aşıyordu.
+  3. **G3 ve G4b:** Bu gruplar haftalık olarak ekleme yapılarak dondurulur. Her hafta eklenen üyeler o haftanın tarihini taşıyan bir taahhütle kayda girer. Kilitli test, F tarihinde dondurulmuş olan üyelerle çalışır. F'den sonra gelen üyeler yalnızca ileriye dönük teste girer. Raporda hedef boyut değil, ulaşılan boyut yazılır.
+  4. **DNS:** Kontrol gruplarının haftalık DNS ölçümü iki ardışık güne yayılabilir. Gruplar iki güne karışık dağıtılır. Hız saniyede en fazla 1 sorgu olarak kalır. 1.5'teki "aynı gün" kuralı "aynı parti" olarak okunur.
+  5. **G3a:** Ölçüt somutlaştırıldı: Üç denemeden en az ikisi başarılı olmalı. Ölçütün tam tanımı kurulum belgesinin 4. bölümünde. Deneme geçmezse geçmiş veri testinde zaman eşleşmeli zor negatif kullanılmaz.
+  6. **G2:** Kategori kümesi ve "boş olmayan liste" tanımı kurulum belgesinin 3. bölümündeki gibi uygulanır.
+  7. **Hafta tabakası:** Haftalık gruplama `first_logged_at` sütununa göre yapılır.
+  8. **Kota yuvarlama:** G3 ve G4b kotaları kurulum belgesindeki kurala göre yuvarlanır.
+  9. **G3 ile G4b arasındaki ilişki:** Sözlükle eşleştiği halde G3'e seçilmeyen alan adları G4b'de kalabilir.
+  10. **Ana veritabanı:** Ana veritabanı Ubuntu'dur (WSL). Pozitiflerin crt.sh ve Wayback verisi orada, aynı toplayıcılarla yeniden toplanır. Windows'taki veritabanı karşılaştırma ve yedek için kalır.
+  11. **G2 kaynağı:** A seçeneği (Tranco ve Cloudflare Radar) kalır. Cloudflare Radar token'ını Kadircan alır. Token repoya, loglara ve hiçbir çıktıya yazılmaz.
+
 - 2026-11-15 (önceden kayıttan sonra, hiçbir sonuç görülmeden): Tarafsız örneklem (4.5) uygulanırken iki uygulama farkı oluştu.
   1. **Seçim kuralı:** "Özet mod 100 = 0" yerine "SHA-256(tuz || alan adı) değerinin ilk 8 baytı < oran × 2^64" kuralı kullanıldı. İkisi de yaklaşık %1 seçer. Yeni kuralın farkı şu: Oran ileride artırılırsa, daha önce seçilmiş alan adları yine seçilmiş kalır.
   2. **Saklanan veri:** Alan adının bütün sertifikaları değil, alan adı başına tek satır saklanır: ilk görülme zamanı, ilk sertifikanın not_before değeri ve görülme sayısı. Bu yüzden "sertifika yenileme düzeni" gibi sertifika başına hesaplanan sinyaller tarafsız kontrol çerçevesinde (N) hesaplanamaz. Bu sinyaller yalnızca K çerçevesinde ya da crt.sh verisiyle raporlanır.
