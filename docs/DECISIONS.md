@@ -122,3 +122,9 @@ Bu kararlar Kadircan tarafından onaylandı. Hiçbir sinyal sonucu görülmeden 
 14. **Küçük hücreler:** Bir hücredeki isabet sayısı ya da tümleyeni 5'ten küçükse yalnızca aralık yazılır. Oran, güven aralığı ve o sayıdan geri hesaplanabilecek her değer (precision, düzeltilmiş precision, günlük alarm) gizlenir.
 15. **Kapsama uyarısı:** Yalnızca referans zamanından önce bilinen kayıtları sayar. Böylece sinyalin gerçekten görebildiği veri ölçülür.
 16. **Kilitli test:** Kilit dosyası git klasöründe tutulur. Aynı depodan açılan bütün çalışma kopyaları aynı kilidi paylaşır. Çalışan programın derlendiği commit HEAD ile aynı olmalıdır. Kilitli test çalışınca komut, kilit kaydının özetini commit etmek ve zaman damgası almak için gereken adımları yazdırır. Bu adımlar elle yapılır ve zorunludur. Depo başka bir yere kopyalanırsa yerel kilit işe yaramaz. Kopyalamaya karşı tek koruma bu dış kayıttır.
+
+**Ek düzeltmeler (2026-11-20, üçüncü denetim turu, sonuç görülmeden):**
+
+17. **Kilitli test temiz kopyada çalışır.** Kilitli test yalnızca HEAD'den açılmış, temiz ve geçici bir git worktree'de derlenen programla çalışır. `src/` ya da `tests/` altında git'in yok saydığı bir dosya varsa çalıştırma reddedilir. Programın derlendiği commit HEAD ile aynı olmak zorundadır. Bilinen sınır: Aynı makinede elle açılmış bir worktree bu otomatik açılandan ayırt edilemez. Tam kanıt için programın CI'da derlenmesi gerekir.
+18. **İleriye dönük test yalnızca sabitlenmiş TSA köklerini kabul eder.** Kabul edilen kökler `src/Fraud.Collectors/Evaluation/tsa_roots.txt` dosyasında tutulur. Liste boşken ileriye dönük test çalışmaz. Bir kök, taahhütten önce bu listeye eklenip commit edilmelidir. Zaman damgasının iptal edilip edilmediği (CRL/OCSP) denetlenmez.
+19. **Eski konumdaki kilit yeni konuma taşınır.** Kilit kaydı eski konumda bulunursa yeni konuma taşınır. O kayıt varken alınan her yeni bilet "yeniden çalıştırma" sayılır.

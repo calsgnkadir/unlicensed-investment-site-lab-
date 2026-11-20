@@ -31,9 +31,15 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         var publicFile = Encoding.UTF8.GetBytes("""{"Root":"00"}""");
         var tsq = CommitmentTool.TimestampRequest(publicFile, 4242);
 
-        var result = TimestampVerifier.Verify(publicFile, tsq, tsa.Respond(tsq, GenTime), tsa.Root.RawData);
+        var result = TimestampVerifier.Verify(publicFile, tsq, tsa.Respond(tsq, GenTime), tsa.Root.RawData, tsa.Pins);
 
         Assert.Equal(GenTime, result.Time);
+        Assert.Equal(TimestampVerifier.Fingerprint(tsa.Root), result.RootFingerprint);
+
+        // E12: Aynı damga, kök sabitlenmemişse (gömülü liste boş) kabul edilmez.
+        var unpinned = TimestampVerifier.Verify(publicFile, tsq, tsa.Respond(tsq, GenTime), tsa.Root.RawData);
+        Assert.Null(unpinned.Time);
+        Assert.Contains("sabitlenmiş", unpinned.Problem, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -46,14 +52,16 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         var tsr = tsa.Respond(tsq, GenTime);
 
         // Başka bir kökün imzaladığı TSA: zincir tutmaz.
-        Assert.Null(TimestampVerifier.Verify(publicFile, tsq, tsr, other.Root.RawData).Time);
+        Assert.Null(TimestampVerifier.Verify(publicFile, tsq, tsr, other.Root.RawData, tsa.Pins).Time);
+        // Kökü sabitlenmiş olsa bile başka kökün imzaladığı TSA zincirlenmez.
+        Assert.Null(TimestampVerifier.Verify(publicFile, tsq, tsr, other.Root.RawData, other.Pins).Time);
         // Açık dosya sonradan değişti (ör. CreatedAt geriye çekildi): özet tutmaz.
-        Assert.Null(TimestampVerifier.Verify(Encoding.UTF8.GetBytes("""{"Root":"01"}"""), tsq, tsr, tsa.Root.RawData).Time);
+        Assert.Null(TimestampVerifier.Verify(Encoding.UTF8.GetBytes("""{"Root":"01"}"""), tsq, tsr, tsa.Root.RawData, tsa.Pins).Time);
         // Başka bir isteğe (başka nonce) verilmiş cevap.
         var foreign = tsa.Respond(CommitmentTool.TimestampRequest(publicFile, 999), GenTime);
-        Assert.Null(TimestampVerifier.Verify(publicFile, tsq, foreign, tsa.Root.RawData).Time);
+        Assert.Null(TimestampVerifier.Verify(publicFile, tsq, foreign, tsa.Root.RawData, tsa.Pins).Time);
         // Bozuk cevap.
-        Assert.Null(TimestampVerifier.Verify(publicFile, tsq, [.. tsr.Take(tsr.Length - 3)], tsa.Root.RawData).Time);
+        Assert.Null(TimestampVerifier.Verify(publicFile, tsq, [.. tsr.Take(tsr.Length - 3)], tsa.Root.RawData, tsa.Pins).Time);
     }
 
     [Fact]
@@ -82,7 +90,7 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         // .tsr yok: sonuç basılmaz.
         using (var noTsr = new StringWriter())
         {
-            Assert.Equal(2, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), noTsr, ct, repo));
+            Assert.Equal(2, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), noTsr, ct, repo, tsa.Pins));
             Assert.DoesNotContain("Recall", noTsr.ToString(), StringComparison.Ordinal);
         }
 
@@ -91,7 +99,7 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         await File.WriteAllBytesAsync(publicOut + ".tsr", other.Respond(await File.ReadAllBytesAsync(publicOut + ".tsq", ct), GenTime), ct);
         using (var wrong = new StringWriter())
         {
-            Assert.Equal(2, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), wrong, ct, repo));
+            Assert.Equal(2, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), wrong, ct, repo, tsa.Pins));
             Assert.Contains("zaman damgası doğrulanamadı", wrong.ToString(), StringComparison.Ordinal);
             Assert.DoesNotContain("Recall", wrong.ToString(), StringComparison.Ordinal);
         }
@@ -100,9 +108,60 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         File.Delete(publicOut + ".tsr");
         await File.WriteAllBytesAsync(publicOut + ".tsr", tsa.Respond(await File.ReadAllBytesAsync(publicOut + ".tsq", ct), GenTime), ct);
         using var ok = new StringWriter();
-        Assert.Equal(0, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), ok, ct, repo));
+        Assert.Equal(0, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), ok, ct, repo, tsa.Pins));
         Assert.Contains("genTime)=2026-11-20 08:30:00Z", ok.ToString(), StringComparison.Ordinal);
+        Assert.Contains("TSA kökü SHA-256=" + TimestampVerifier.Fingerprint(tsa.Root), ok.ToString(), StringComparison.Ordinal);
         Assert.Contains("Recall", ok.ToString(), StringComparison.Ordinal);
+
+        // E12: Sabitlenmiş liste boşsa (gömülü varsayılan) ileriye dönük test hiç çalışmaz.
+        using var empty = new StringWriter();
+        Assert.Equal(2, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), empty, ct, repo));
+        Assert.Contains("Sabitlenmiş TSA kökü yok", empty.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Recall", empty.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Pinned_root_list_is_strict_and_the_shipped_list_is_empty()
+    {
+        Assert.Empty(PinnedTsaRoots.Default);
+        var fp = new string('a', 64);
+        Assert.Equal([fp], PinnedTsaRoots.Parse("# yorum" + Environment.NewLine + fp + "  # TSA adı" + Environment.NewLine));
+        Assert.Throws<InvalidDataException>(() => PinnedTsaRoots.Parse(new string('A', 64)));
+        Assert.Throws<InvalidDataException>(() => PinnedTsaRoots.Parse("kisa"));
+    }
+
+    // ---- E11 ----
+
+    [Fact]
+    public void Ignored_files_under_src_or_tests_are_found_except_build_outputs()
+    {
+        var porcelain = string.Join("\n",
+            "!! src/Fraud.Evaluation/out/Ek.cs",
+            "!! src/Fraud.Evaluation/bin/Debug/x.dll",
+            "!! src/Fraud.Evaluation/obj/project.assets.json",
+            "!! tests/Fraud.Evaluation.Tests/publish/y.cs",
+            "!! data/private/liste.txt",
+            "?? src/yeni.cs");
+
+        Assert.Equal(["src/Fraud.Evaluation/out/Ek.cs", "tests/Fraud.Evaluation.Tests/publish/y.cs"], RepoContext.FindIgnoredSourcePaths(porcelain));
+    }
+
+    [Fact]
+    public void Locked_run_inner_arguments_point_into_the_temporary_worktree()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(_dir.FullName, "ana")).FullName;
+        File.WriteAllText(Path.Combine(root, RepoContext.MarkerFile), "");
+        var repo = RepoContext.At(root);
+        var worktree = Path.Combine(_dir.FullName, "gecici");
+        var args = EvaluationCommands.ParseArgs(["--commit", new string('a', 40), "--controls", Path.Combine(root, "data", "private", "k.csv")]);
+
+        var inner = LockedRunOrchestrator.InnerArguments(repo, worktree, Path.Combine(root, "config", "eval.json"), args).ToDictionary(x => x.Key, x => x.Value);
+
+        Assert.Equal("Locked", inner["mode"]);
+        Assert.Equal(Path.Combine(worktree, "config", "eval.json"), inner["config"]);
+        Assert.Equal(Path.Combine(root, "data", "private", "k.csv"), inner["controls"]);
+        Assert.True(LockedRunOrchestrator.IsInside(Path.Combine(worktree, "src", "a.dll"), worktree));
+        Assert.False(LockedRunOrchestrator.IsInside(Path.Combine(root, "src", "a.dll"), worktree));
     }
 
     // ---- E8 ----
@@ -173,6 +232,9 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         public X509Certificate2 Root { get; }
 
         public X509Certificate2 Tsa { get; }
+
+        /// <summary>Bu testin kendi kökünü sabitleyen liste ("testte kendi kökünü listeye ekleyen yapılandırma").</summary>
+        public IReadOnlySet<string> Pins => new HashSet<string>(StringComparer.Ordinal) { TimestampVerifier.Fingerprint(Root) };
 
         public static FakeTsa Create()
         {

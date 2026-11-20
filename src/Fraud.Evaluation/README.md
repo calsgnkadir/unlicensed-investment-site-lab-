@@ -58,8 +58,8 @@ Bu bir yatırım tavsiyesi değildir. "Pozitif", "SPK erişim engeli listesinde"
 - Sayı olarak yazılmış enum reddedilir.
 - Dosya en fazla 64 KB olabilir.
 - Bootstrap tekrar sayısı en fazla 20.000, pencere en fazla 365 gün olabilir.
-- Kilit dosyasının yolu yapılandırmada **yoktur**: Kodda sabittir ve git'in ortak klasöründedir (`<git-common-dir>/fraud-lab/locked-run.json`). Eski sürümün `data/private/evaluation/locked-run.json` dosyası varsa o da "kullanıldı" sayılır.
-- İleriye dönük test için `timestampAuthorityRootFile` alanı zorunludur. Bu alan, TSA kök sertifikasının yoludur (DER ya da PEM).
+- Kilit dosyasının yolu yapılandırmada **yoktur**: Kodda sabittir ve git'in ortak klasöründedir (`<git-common-dir>/fraud-lab/locked-run.json`). Eski sürümün `data/private/evaluation/locked-run.json` kaydı varsa önce yeni konuma taşınır. Böylece `--allow-rerun` ile bile ikinci çalıştırma "ilk" görünmez.
+- İleriye dönük test için `timestampAuthorityRootFile` alanı zorunludur. Bu alan, TSA kök sertifikasının yoludur (DER ya da PEM). Kök ayrıca sabitlenmiş listede olmalıdır (aşağıda).
 - git, PATH'teki tam yollardan bulunur. Göreli girdiler ve çalışma klasörü atlanır. İstenirse `Git:Path` ayarı ya da `Git__Path` ortam değişkeniyle tam yol olarak verilebilir.
 
 ## Kilitli test
@@ -70,15 +70,35 @@ git rev-parse HEAD              # dondurulmuş commit
 dotnet run --project src/Fraud.Collectors -- eval-run --mode Locked --config <depoda izlenen yapılandırma> --commit <40 karakter>
 ```
 
-Komut kilidi ancak aşağıdakilerin hepsi doğruysa alır. Depo kökü, `git rev-parse --show-toplevel` çıktısıyla aynı olmalıdır; değilse komut başlamaz.
+Komut ana çalışma ağacından çağrılır ve kendisi şunları yapar (E11):
+
+1. Ana ağaçta aşağıdaki 1–4 numaralı denetimleri yapar.
+2. `git -c core.fsmonitor=false worktree add --detach <geçici klasör> HEAD` ile temiz, geçici bir worktree açar.
+3. Orada `dotnet build src/Fraud.Collectors -c Release` çalıştırır.
+4. Derlenen programla aynı komutu geçici klasörde "iç kip" olarak çalıştırır. Kilidi yalnızca iç kip alır.
+5. İş bitince geçici worktree'yi siler.
+
+Neden: Ana ağaçta "temiz ağaç + ikilinin commit'i" çalışan kodu kanıtlamıyordu:
+
+- git'in yok saydığı bir klasördeki (ör. `src/.../out/`) `.cs` dosyası derlenir.
+- İkilideki `+sha` değeri derleme sırasında elle verilebilir.
+
+Temiz worktree'de yalnızca HEAD'deki izlenen dosyalar vardır. Bu yüzden ikilideki `+sha` değeri yalnızca orada güvenilir sayılır. Geçici worktree'nin içinden derlenmemiş bir program kilit almaz.
+
+Ayrı bir komut yerine `eval-run --mode Locked` seçildi. Böylece hatırlanacak tek komut var ve kirli ağaçtan kilitli test yolu hiç yok.
+
+Her iki aşamada da depo kökü `git rev-parse --show-toplevel` çıktısıyla aynı olmalıdır. Bütün git çağrıları `-c core.fsmonitor=false` ile yapılır. Denetimler:
 
 1. Yapılandırmanın tamamı doğrulanmış, `freezeDate` dahil. Böylece bir yapılandırma hatası tek çalıştırma hakkını harcamaz.
 2. `--commit` 40 karakterlik bir git kimliği ve `git rev-parse HEAD` ile aynı.
-3. Çalışma ağacı temiz: `git status --porcelain` boş ve `git ls-files -v` içinde `h` (değişmedi say) ya da `S` (atla) işaretli dosya yok.
+3. Çalışma ağacı temiz:
+   - `git status --porcelain` boş.
+   - `git ls-files -v` içinde `h` (değişmedi say) ya da `S` (atla) işaretli dosya yok.
+   - `git status --ignored --porcelain` çıktısında `src/` ya da `tests/` altında yok sayılan dosya yok (`bin/` ve `obj/` hariç).
 4. Yapılandırma dosyası depoda izleniyor. Bu yüzden özeti, dondurulmuş commit'teki dosyanın özetidir.
-5. Çalışan programın derlendiği commit (`AssemblyInformationalVersion` içindeki `+sha`) HEAD ile aynı.
+5. (Yalnızca iç kip) Program geçici worktree'nin içinden derlenmiş ve derlendiği commit (`AssemblyInformationalVersion` içindeki `+sha`) HEAD ile aynı.
 
-Kilit dosyası depo kökünde, `CreateNew` ile ve veri yüklenmeden önce yazılır. Yarıda kesilen çalıştırma da "kullanıldı" sayılır. İkinci çalıştırma yalnızca `--allow-rerun true --reason "..."` ile olur; bu durumda rapor "YENİDEN ÇALIŞTIRMA" diye başlar.
+Kilit dosyası git ortak klasöründe, `CreateNew` ile ve veri yüklenmeden önce yazılır. Yarıda kesilen çalıştırma da "kullanıldı" sayılır. İkinci çalıştırma yalnızca `--allow-rerun true --reason "..."` ile olur; bu durumda rapor "YENİDEN ÇALIŞTIRMA" diye başlar.
 
 **Zorunlu dış çapa:** Kilit dosyası yereldir. Depo başka bir klasöre klonlanırsa kilit görünmez. Bu yüzden komut, kilidi alır almaz şunları yapar:
 
@@ -103,8 +123,11 @@ dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --confi
   - Cevap bu isteğe ait olmalı (nonce).
   - TSA imzası geçerli olmalı.
   - TSA sertifikası, yapılandırmadaki köke zincirlenmeli.
+  - Kökün SHA-256 parmak izi, git'te izlenen `src/Fraud.Collectors/Evaluation/tsa_roots.txt` dosyasında olmalı (E12). Dosya derlemeye gömülüdür.
 
-  Bunlardan biri tutmazsa sonuç basılmaz.
+  Bunlardan biri tutmazsa sonuç basılmaz. Kullanılan kökün parmak izi çıktıya yazılır.
+- **Sabitlenmiş kök listesi şu an boş.** Bu çalışmada ağa erişim yoktu, gerçek bir TSA kökü indirilmedi. Liste boşken ileriye dönük test çalışmaz. Kök ekleme adımı dosyanın başında yazar. Kök, taahhütten **önce** commit edilmelidir.
+- **Bilinen sınır:** İptal (CRL / OCSP) denetimi yapılmaz, çünkü çevrimdışı çalışıyoruz. İptal edilmiş bir TSA sertifikasının damgası bu yüzden kabul edilebilir. Damga, sertifikanın `genTime` anındaki geçerliliğine göre değerlendirilir.
 - İlk sertifikası bilinmeyen birim, pozitif de kontrol de olsa, bu teste girmez.
 
 ## Taahhüt ve zaman damgası

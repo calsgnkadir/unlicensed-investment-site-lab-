@@ -5,7 +5,55 @@ using System.Security.Cryptography.X509Certificates;
 namespace Fraud.Collectors.Evaluation;
 
 /// <summary>Zaman damgası doğrulama sonucu. <see cref="Time"/> boşsa <see cref="Problem"/> nedenini söyler.</summary>
-public sealed record TimestampVerification(DateTimeOffset? Time, string Problem);
+public sealed record TimestampVerification(DateTimeOffset? Time, string Problem)
+{
+    /// <summary>Kullanılan kök sertifikanın SHA-256 parmak izi (rapora yazılır).</summary>
+    public string? RootFingerprint { get; init; }
+}
+
+/// <summary>
+/// Sabitlenmiş TSA kökleri (E12): git'te izlenen <c>Evaluation/tsa_roots.txt</c>, derlemeye gömülü. Her satır bir kök
+/// sertifikanın SHA-256 parmak izi; <c>#</c> sonrası açıklamadır.
+/// </summary>
+public static class PinnedTsaRoots
+{
+    private const string ResourceName = "Fraud.Collectors.tsa_roots.txt";
+
+    /// <summary>Derlemeye gömülü liste. Şu an boş: gerçek bir kök eklenene kadar ileriye dönük test çalışmaz.</summary>
+    public static IReadOnlySet<string> Default { get; } = Load();
+
+    /// <summary>Liste metnini ayrıştırır. Geçersiz satır (64 küçük harf onaltılık değil) istisna verir.</summary>
+    public static IReadOnlySet<string> Parse(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Split('#')[0].Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            if (line.Length != 64 || !line.All(char.IsAsciiHexDigitLower))
+            {
+                throw new InvalidDataException("tsa_roots.txt: Her satır 64 karakterlik küçük harf SHA-256 parmak izi olmalı.");
+            }
+
+            set.Add(line);
+        }
+
+        return set;
+    }
+
+    private static IReadOnlySet<string> Load()
+    {
+        using var stream = typeof(PinnedTsaRoots).Assembly.GetManifestResourceStream(ResourceName)
+            ?? throw new InvalidOperationException("Gömülü kaynak yok: " + ResourceName);
+        using var reader = new StreamReader(stream);
+        return Parse(reader.ReadToEnd());
+    }
+}
 
 /// <summary>
 /// RFC 3161 zaman damgası cevabını (.tsr) çevrimdışı doğrular ve damga zamanını (genTime) verir (E10).
@@ -28,13 +76,44 @@ public static class TimestampVerifier
     private const string TimeStampingEku = "1.3.6.1.5.5.7.3.8";
     private const string Sha256Oid = "2.16.840.1.101.3.4.2.1";
 
-    public static TimestampVerification Verify(byte[] publicFile, byte[] tsq, byte[] tsr, byte[] tsaRootCertificate)
+    /// <summary>Sabitlenmiş kök listesiyle (<see cref="PinnedTsaRoots.Default"/>) doğrular.</summary>
+    public static TimestampVerification Verify(byte[] publicFile, byte[] tsq, byte[] tsr, byte[] tsaRootCertificate) =>
+        Verify(publicFile, tsq, tsr, tsaRootCertificate, PinnedTsaRoots.Default);
+
+    /// <summary>
+    /// Verilen kök listesiyle doğrular. Kök sertifikanın parmak izi listede değilse damga hiç incelenmez (E12): Kendi kökünü
+    /// ve TSA'sını kuran biri geriye tarihli bir damga üretebilirdi.
+    /// </summary>
+    public static TimestampVerification Verify(
+        byte[] publicFile, byte[] tsq, byte[] tsr, byte[] tsaRootCertificate, IReadOnlySet<string> pinnedRootFingerprints)
     {
         ArgumentNullException.ThrowIfNull(publicFile);
         ArgumentNullException.ThrowIfNull(tsq);
         ArgumentNullException.ThrowIfNull(tsr);
         ArgumentNullException.ThrowIfNull(tsaRootCertificate);
+        ArgumentNullException.ThrowIfNull(pinnedRootFingerprints);
         var hash = SHA256.HashData(publicFile);
+
+        string fingerprint;
+        try
+        {
+            using var rootForPin = LoadRoot(tsaRootCertificate);
+            fingerprint = Fingerprint(rootForPin);
+        }
+        catch (CryptographicException)
+        {
+            return Fail("kök sertifika okunamadı");
+        }
+
+        if (pinnedRootFingerprints.Count == 0)
+        {
+            return Fail("sabitlenmiş TSA kökü yok (tsa_roots.txt boş)");
+        }
+
+        if (!pinnedRootFingerprints.Contains(fingerprint))
+        {
+            return Fail("kök sertifika sabitlenmiş listede değil (parmak izi " + fingerprint + ")");
+        }
 
         if (!Rfc3161TimestampRequest.TryDecode(tsq, out var request, out _) || request is null)
         {
@@ -86,13 +165,20 @@ public static class TimestampVerifier
             }
         }
 
-        return new TimestampVerification(token.TokenInfo.Timestamp, string.Empty);
+        return new TimestampVerification(token.TokenInfo.Timestamp, string.Empty) { RootFingerprint = fingerprint };
     }
 
     private static TimestampVerification Fail(string problem) => new(null, problem);
 
+    /// <summary>Kök sertifikanın SHA-256 parmak izi: DER baytlarının özeti, küçük harf onaltılık.</summary>
+    public static string Fingerprint(X509Certificate2 certificate)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+        return Convert.ToHexStringLower(SHA256.HashData(certificate.RawData));
+    }
+
     /// <summary>Kök sertifika PEM ("-----BEGIN CERTIFICATE-----") ya da DER olabilir.</summary>
-    private static X509Certificate2 LoadRoot(byte[] bytes)
+    public static X509Certificate2 LoadRoot(byte[] bytes)
     {
         var text = System.Text.Encoding.ASCII.GetString(bytes);
         return text.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal)

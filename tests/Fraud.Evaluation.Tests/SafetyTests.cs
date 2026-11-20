@@ -103,6 +103,40 @@ public sealed class SafetyTests
     }
 
     [Fact]
+    public void Legacy_lock_turns_any_new_ticket_into_a_rerun()
+    {
+        // Mentör bulgusu: Eski konumda kayıt varken --allow-rerun verilince yeni konumda "ilk" bilet alınıyordu.
+        var dir = Path.Combine(Path.GetTempPath(), "fraud-eval-" + Guid.NewGuid().ToString("N"));
+        var legacy = Path.Combine(dir, "eski", "locked-run.json");
+        var current = Path.Combine(dir, "yeni", "locked-run.json");
+        try
+        {
+            LockedRunGuard.Acquire(legacy, "eski-ozet", CommitA, Decision);
+
+            // Gerekçesiz: reddedilir (eski kayıt yeni konuma taşındı, ilk çalıştırma kullanılmış).
+            Assert.Throws<LockedRunAlreadyUsedException>(() =>
+                LockedRunGuard.AcquireWithLegacy(current, legacy, "yeni-ozet", CommitB, Decision.AddDays(1)));
+
+            // Gerekçeyle: yeniden çalıştırma olarak işaretlenir, ilk çalıştırma eski kayıttaki.
+            var ticket = LockedRunGuard.AcquireWithLegacy(current, legacy, "yeni-ozet", CommitB, Decision.AddDays(2), allowRerun: true, rerunReason: "deneme");
+            Assert.True(ticket.IsRerun);
+            Assert.Equal(CommitA, ticket.First.Commit);
+            Assert.Equal("eski-ozet", ticket.First.ConfigSha256);
+
+            // Eski kayıt yoksa normal ilk bilet.
+            var fresh = Path.Combine(dir, "bos", "locked-run.json");
+            Assert.False(LockedRunGuard.AcquireWithLegacy(fresh, Path.Combine(dir, "yok.json"), "x", CommitA, Decision).IsRerun);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void Rerun_report_is_marked()
     {
         var dir = Path.Combine(Path.GetTempPath(), "fraud-eval-" + Guid.NewGuid().ToString("N"));

@@ -29,7 +29,7 @@ public static class EvaluationCommands
     /// </summary>
     public static async Task<int> EvalRunAsync(
         FraudDbContext db, IDomainNameNormalizer normalizer, IReadOnlyDictionary<string, string?> args, TextWriter output,
-        CancellationToken cancellationToken, RepoContext? repo = null)
+        CancellationToken cancellationToken, RepoContext? repo = null, IReadOnlySet<string>? pinnedTsaRoots = null)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -50,25 +50,26 @@ public static class EvaluationCommands
         LockedRunTicket? ticket = null;
         if (mode == EvaluationMode.Locked)
         {
+            // E11: Ana ağaçtan çağrıldıysa (ya da program geçici worktree'nin içinden derlenmemişse) temiz bir geçici
+            // worktree'de derleyip orada çalıştır. Kilidi yalnızca oradaki "iç" çalıştırma alır.
+            if (!repo.IsLinkedWorktree() || !LockedRunOrchestrator.IsInside(AppContext.BaseDirectory, repo.Root))
+            {
+                return await LockedRunOrchestrator.RunAsync(repo, configPath, args, output, cancellationToken).ConfigureAwait(false);
+            }
+
             if (await CheckFrozenStateAsync(repo, configPath, Arg(args, "commit"), output).ConfigureAwait(false) is not { } commit)
             {
                 return 64;
             }
 
-            // E8: Kilit git'in ortak klasöründe (worktree'ler aynı dosyayı görür). Eski sürümün depo içindeki kilidi
-            // varsa o da "kullanıldı" sayılır.
+            // E8: Kilit git'in ortak klasöründe (worktree'ler aynı dosyayı görür). Eski sürümün depo içindeki kaydı varsa
+            // önce yeni konuma taşınır; böylece --allow-rerun ile bile ikinci çalıştırma "ilk" görünmez.
             var lockPath = repo.LockFilePath();
-            var allowRerun = Arg(args, "allow-rerun") == "true";
-            if (File.Exists(repo.PrivatePath(config.LockFile)) && !allowRerun)
-            {
-                await output.WriteLineAsync("Eski konumda bir kilit kaydı var (data/private/evaluation); kilitli test daha önce çalışmış.").ConfigureAwait(false);
-                return 2;
-            }
 
             // Kilit veri yüklenmeden önce alınır: Yarıda kesilen çalıştırma da "kullanıldı" sayılır.
-            ticket = LockedRunGuard.Acquire(
-                lockPath, Convert.ToHexStringLower(SHA256.HashData(configBytes)), commit, DateTimeOffset.UtcNow,
-                allowRerun: allowRerun, rerunReason: Arg(args, "reason"));
+            ticket = LockedRunGuard.AcquireWithLegacy(
+                lockPath, repo.PrivatePath(config.LockFile), Convert.ToHexStringLower(SHA256.HashData(configBytes)), commit,
+                DateTimeOffset.UtcNow, allowRerun: Arg(args, "allow-rerun") == "true", rerunReason: Arg(args, "reason"));
             await WriteAnchorInstructionsAsync(lockPath, output, cancellationToken).ConfigureAwait(false);
         }
 
@@ -77,7 +78,8 @@ public static class EvaluationCommands
         if (mode == EvaluationMode.Prospective)
         {
             // E10: Taahhüt anı doğrulanmış RFC 3161 damgasından gelir. Doğrulanamazsa veri bile yüklenmez, sonuç basılmaz.
-            committed = await ReadCommittedAsync(args, config, repo, normalizer, loader, output, cancellationToken).ConfigureAwait(false);
+            committed = await ReadCommittedAsync(
+                args, config, repo, pinnedTsaRoots ?? PinnedTsaRoots.Default, normalizer, loader, output, cancellationToken).ConfigureAwait(false);
             if (committed is null)
             {
                 return 2;
@@ -277,17 +279,21 @@ public static class EvaluationCommands
     }
 
     /// <summary>
-    /// Kilitli test öncesi donmuş durum denetimi (E1). Hepsi geçerse commit kimliğini döner.
+    /// Kaynak ağacı denetimi (E1, E9, E11). Hepsi geçerse commit kimliğini döner; geçmezse nedeni yazar ve <c>null</c> döner.
+    /// Hem ana ağaçta (geçici worktree açılmadan önce) hem geçici worktree'de (kilit alınmadan önce) çalışır.
     /// </summary>
     /// <remarks>
     /// <list type="number">
     /// <item><c>--commit</c> 40 karakterlik git kimliği ve <c>git rev-parse HEAD</c> ile aynı.</item>
-    /// <item>Çalışma ağacı temiz: Kod ve yapılandırma tam olarak o commit'teki hâli.</item>
+    /// <item>Çalışma ağacı temiz: <c>git status --porcelain</c> boş, <c>ls-files -v</c> içinde h/S işareti yok.</item>
+    /// <item>src/ ve tests/ altında git'in yok saydığı dosya yok (bin/ ve obj/ hariç): Yok sayılan .cs de derlenir (E11).</item>
     /// <item>Yapılandırma dosyası depoda izleniyor: Özeti, dondurulmuş commit'teki dosyanın özetidir.</item>
     /// </list>
     /// </remarks>
-    private static async Task<string?> CheckFrozenStateAsync(RepoContext repo, string configPath, string? commit, TextWriter output)
+    public static async Task<string?> CheckSourceStateAsync(RepoContext repo, string configPath, string? commit, TextWriter output)
     {
+        ArgumentNullException.ThrowIfNull(repo);
+        ArgumentNullException.ThrowIfNull(output);
         string? problem = null;
         if (commit is null || !LockedRunGuard.IsFullCommitId(commit))
         {
@@ -301,19 +307,13 @@ public static class EvaluationCommands
         {
             problem = "Çalışma ağacı temiz değil (git status). Kilitli test yalnızca commit edilmiş kodla çalışır.";
         }
+        else if (repo.IgnoredSourcePaths() is not { Count: 0 } ignored)
+        {
+            problem = "src/ ya da tests/ altında git'in yok saydığı dosya var (bin/ ve obj/ dışında). Bu dosyalar derlenebilir; önce silin.";
+        }
         else if (!repo.IsTracked(configPath))
         {
             problem = "Yapılandırma dosyası depoda izlenmiyor; dondurulmuş commit'in parçası olmalı.";
-        }
-        else if (RepoContext.BuildCommit() is { } built && !string.Equals(built, commit, StringComparison.Ordinal))
-        {
-            // E9: Kaynak ağacı temiz olsa da çalışan ikili başka bir commit'ten derlenmiş olabilir.
-            problem = "Çalışan program başka bir commit'ten derlenmiş (" + built + "). Önce yeniden derleyin.";
-        }
-
-        if (problem is null && RepoContext.BuildCommit() is null)
-        {
-            await output.WriteLineAsync("UYARI: Çalışan programın derlendiği commit bilinmiyor; HEAD ile karşılaştırılamadı.").ConfigureAwait(false);
         }
 
         if (problem is null)
@@ -323,6 +323,28 @@ public static class EvaluationCommands
 
         await output.WriteLineAsync("Kilitli test başlamadı (kilit alınmadı): " + problem).ConfigureAwait(false);
         return null;
+    }
+
+    /// <summary>
+    /// İç kip denetimi: <see cref="CheckSourceStateAsync"/> ve ek olarak çalışan programın derlendiği commit HEAD ile aynı
+    /// olmalı. İkilideki "+sha" ancak bu geçici, temiz worktree'den derlenmişse güvenilir sayılır; o yüzden iç kip yalnızca
+    /// geçici worktree'de ve oradan derlenmiş programla çalışır (<see cref="LockedRunOrchestrator"/>).
+    /// </summary>
+    private static async Task<string?> CheckFrozenStateAsync(RepoContext repo, string configPath, string? commit, TextWriter output)
+    {
+        if (await CheckSourceStateAsync(repo, configPath, commit, output).ConfigureAwait(false) is not { } checkedCommit)
+        {
+            return null;
+        }
+
+        if (!string.Equals(RepoContext.BuildCommit(), checkedCommit, StringComparison.Ordinal))
+        {
+            await output.WriteLineAsync("Kilitli test başlamadı (kilit alınmadı): Çalışan programın derlendiği commit HEAD ile aynı değil ya da bilinmiyor.")
+                .ConfigureAwait(false);
+            return null;
+        }
+
+        return checkedCommit;
     }
 
     /// <summary>
@@ -337,9 +359,17 @@ public static class EvaluationCommands
     /// </list>
     /// </remarks>
     private static async Task<(IReadOnlySet<string> Ids, DateTimeOffset Time)?> ReadCommittedAsync(
-        IReadOnlyDictionary<string, string?> args, EvaluationConfig config, RepoContext repo, IDomainNameNormalizer normalizer,
-        EvaluationDataLoader loader, TextWriter output, CancellationToken cancellationToken)
+        IReadOnlyDictionary<string, string?> args, EvaluationConfig config, RepoContext repo, IReadOnlySet<string> pinnedTsaRoots,
+        IDomainNameNormalizer normalizer, EvaluationDataLoader loader, TextWriter output, CancellationToken cancellationToken)
     {
+        // E12: Kabul edilen TSA kökleri git'te izlenen tsa_roots.txt'te sabit. Liste boşsa ileriye dönük test hiç çalışmaz.
+        if (pinnedTsaRoots.Count == 0)
+        {
+            await output.WriteLineAsync("İleriye dönük test çalışmadı: Sabitlenmiş TSA kökü yok (src/Fraud.Collectors/Evaluation/tsa_roots.txt boş).")
+                .ConfigureAwait(false);
+            return null;
+        }
+
         if (Arg(args, "commitment") is not { } publicPath || Arg(args, "opening") is not { } openingPath)
         {
             await output.WriteLineAsync("İleriye dönük test için --commitment <açık dosya> ve --opening <açıklama dosyası> gerekli.").ConfigureAwait(false);
@@ -363,7 +393,8 @@ public static class EvaluationCommands
             publicBytes,
             await File.ReadAllBytesAsync(tsqPath, cancellationToken).ConfigureAwait(false),
             await File.ReadAllBytesAsync(tsrPath, cancellationToken).ConfigureAwait(false),
-            await File.ReadAllBytesAsync(rootPath, cancellationToken).ConfigureAwait(false));
+            await File.ReadAllBytesAsync(rootPath, cancellationToken).ConfigureAwait(false),
+            pinnedTsaRoots);
         if (verified.Time is not { } time)
         {
             await output.WriteLineAsync("İleriye dönük test çalışmadı: zaman damgası doğrulanamadı (" + verified.Problem + ").").ConfigureAwait(false);
@@ -384,7 +415,7 @@ public static class EvaluationCommands
             .Select(r => loader.SubjectIdOf(r!))
             .ToHashSet(StringComparer.Ordinal);
         await output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
-            $"Taahhüt: kayıt={publicCommitment.Count}, doğrulanmış zaman damgası (genTime)={time:u}."))
+            $"Taahhüt: kayıt={publicCommitment.Count}, doğrulanmış zaman damgası (genTime)={time:u}, TSA kökü SHA-256={verified.RootFingerprint}."))
             .ConfigureAwait(false);
         return (ids, time);
     }

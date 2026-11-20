@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Sabitlenmiş TSA kökleri (E12): derlemeye gömülür, çalışma anında dışarıdan değiştirilemez. -->
+    <EmbeddedResource Include="Evaluation\tsa_roots.txt" LogicalName="Fraud.Collectors.tsa_roots.txt" />
   </ItemGroup>
 
 </Project>

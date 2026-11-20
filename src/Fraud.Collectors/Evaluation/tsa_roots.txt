@@ -1,0 +1,9 @@
+# Kabul edilen zaman damgası kuruluşu (TSA) kök sertifikaları: SHA-256 parmak izi (DER baytlarının özeti), küçük harf onaltılık.
+# Bulgu E12: Kök, ölçümü çalıştıran kişinin yapılandırmasından SEÇİLEMEZ. Yalnızca bu git'te izlenen dosyadaki kökler
+# kabul edilir. Dosya derlemeye gömülür; kilitli test temiz worktree'den derlendiği için liste HEAD'deki listedir.
+#
+# Yeni kök eklemek: Kökü TSA'nın kendi sayfasından indirin, parmak izini hesaplayın (ör. `sha256sum` DER dosyası;
+# PEM ise önce `openssl x509 -outform der`), aşağıya "parmak_izi  # TSA adı, indirme tarihi" olarak yazıp commit edin.
+# Bu commit, ileriye dönük testin taahhüdünden ÖNCE yapılmalı: Kök, sonucu görüldükten sonra seçilmiş olmasın.
+#
+# Liste şu an BOŞ: Bu çalışmada ağa erişim yoktu, gerçek bir kök indirilmedi. Liste boşken ileriye dönük test çalışmaz.

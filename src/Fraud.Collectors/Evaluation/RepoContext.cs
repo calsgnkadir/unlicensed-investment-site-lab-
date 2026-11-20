@@ -73,8 +73,10 @@ public sealed class RepoContext
     public string PrivatePath(string relative)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(relative);
-        var privateRoot = Path.GetFullPath(Path.Combine(Root, "data", "private")) + Path.DirectorySeparatorChar;
-        var full = Path.GetFullPath(Path.Combine(Root, relative));
+        // Geçici worktree'de de ana deponun data/private klasörü kullanılır (kimlik anahtarı aynı kalsın).
+        var baseDir = PrivateRootBase;
+        var privateRoot = Path.GetFullPath(Path.Combine(baseDir, "data", "private")) + Path.DirectorySeparatorChar;
+        var full = Path.GetFullPath(Path.Combine(baseDir, relative));
         if (!full.StartsWith(privateRoot, StringComparison.Ordinal))
         {
             throw new InvalidOperationException("Gizli dosya data/private dışına yazılamaz.");
@@ -90,13 +92,8 @@ public sealed class RepoContext
     /// </summary>
     public string LockFilePath()
     {
-        var common = Git("rev-parse", "--git-common-dir") is { ExitCode: 0 } r ? r.Output.Trim() : null;
-        if (string.IsNullOrEmpty(common))
-        {
-            throw new InvalidOperationException("git ortak klasörü okunamadı; kilitli test başlamaz.");
-        }
-
-        return Path.GetFullPath(Path.Combine(Root, common, "fraud-lab", "locked-run.json"));
+        var common = GitCommonDir() ?? throw new InvalidOperationException("git ortak klasörü okunamadı; kilitli test başlamaz.");
+        return Path.Combine(common, "fraud-lab", "locked-run.json");
     }
 
     /// <summary><c>git rev-parse HEAD</c>.</summary>
@@ -166,28 +163,134 @@ public sealed class RepoContext
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        // E11 (c): .git/config içindeki core.fsmonitor kancası git status'a "değişiklik yok" dedirtebilir ve kancanın kodunu
+        // çalıştırır. Her çağrıda kapatılır.
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add("core.fsmonitor=false");
         foreach (var argument in arguments)
         {
             psi.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(psi);
-        if (process is null)
+        return ProcessRunner.Run(psi, GitTimeout);
+    }
+
+    /// <summary>
+    /// Ana çalışma ağacının kökü: git ortak klasörünün (<c>.../.git</c>) üst klasörü. Geçici worktree içinden çalışınca da
+    /// gizli dosyalar (kimlik anahtarı, eski kilit) ana depodaki data/private'tan okunur. git yoksa <see cref="Root"/>.
+    /// </summary>
+    public string PrivateRootBase
+    {
+        get
+        {
+            var common = GitCommonDir();
+            return common is not null && string.Equals(Path.GetFileName(common), ".git", StringComparison.OrdinalIgnoreCase)
+                ? Path.GetDirectoryName(common)!
+                : Root;
+        }
+    }
+
+    /// <summary>Bu klasör <c>git worktree add</c> ile açılmış ikincil bir çalışma ağacı mı (git-dir ≠ git-common-dir)?</summary>
+    public bool IsLinkedWorktree()
+    {
+        var gitDir = Git("rev-parse", "--absolute-git-dir") is { ExitCode: 0 } r ? r.Output.Trim() : null;
+        var common = GitCommonDir();
+        return gitDir is not null && common is not null && !SamePath(gitDir, common);
+    }
+
+    /// <summary>
+    /// src/ ve tests/ altında git'in YOK SAYDIĞI dosyalar (bin/ ve obj/ derleme çıktıları hariç). E11 (a): SDK'nın varsayılan
+    /// derleme kalıbı yok sayılan klasördeki (ör. out/) .cs dosyasını da derler; git status bunu göstermez.
+    /// </summary>
+    public IReadOnlyList<string>? IgnoredSourcePaths() =>
+        Git("status", "--ignored", "--porcelain", "--untracked-files=all") is { ExitCode: 0 } r ? FindIgnoredSourcePaths(r.Output) : null;
+
+    /// <summary>Saf ayrıştırıcı: <c>git status --ignored --porcelain</c> çıktısında "!! " satırlarından src/ ve tests/ altındakiler.</summary>
+    public static IReadOnlyList<string> FindIgnoredSourcePaths(string porcelain)
+    {
+        ArgumentNullException.ThrowIfNull(porcelain);
+        return [.. porcelain.Split('\n')
+            .Select(l => l.TrimEnd('\r'))
+            .Where(l => l.StartsWith("!! ", StringComparison.Ordinal))
+            .Select(l => l[3..].Trim('"'))
+            .Where(p => p.StartsWith("src/", StringComparison.Ordinal) || p.StartsWith("tests/", StringComparison.Ordinal))
+            .Where(p => !p.Split('/').Any(segment => segment is "bin" or "obj"))];
+    }
+
+    /// <summary>HEAD'den ayrık (detached) geçici bir worktree açar.</summary>
+    public bool AddDetachedWorktree(string path) => Git("worktree", "add", "--detach", path, "HEAD") is { ExitCode: 0 };
+
+    /// <summary>Geçici worktree'yi siler (dosyalar ve git kaydı).</summary>
+    public void RemoveWorktree(string path)
+    {
+        _ = Git("worktree", "remove", "--force", path);
+        _ = Git("worktree", "prune");
+    }
+
+    private string? GitCommonDir()
+    {
+        var common = Git("rev-parse", "--git-common-dir") is { ExitCode: 0 } r ? r.Output.Trim() : null;
+        return string.IsNullOrEmpty(common) ? null : Path.GetFullPath(Path.Combine(Root, common));
+    }
+}
+
+/// <summary>Dış süreç çalıştırıcı: stdout ve stderr ikisi de okunur, süre aşılırsa süreç ağacı öldürülür.</summary>
+public static class ProcessRunner
+{
+    /// <summary>
+    /// stdout ve stderr ikisi de okunur. Biri okunmazsa işletim sistemi tamponu dolar ve süreç kilitlenir. Süre aşılırsa
+    /// süreç öldürülür ve sonuç <c>null</c> olur; bitmemiş sürecin çıkış koduna güvenilmez.
+    /// </summary>
+    /// <param name="echo">Verilirse her çıktı satırı buraya da yazılır (uzun derleme ve çalıştırma için).</param>
+    public static (int ExitCode, string Output)? Run(ProcessStartInfo psi, TimeSpan timeout, TextWriter? echo = null)
+    {
+        ArgumentNullException.ThrowIfNull(psi);
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+        psi.UseShellExecute = false;
+
+        using var process = new Process { StartInfo = psi };
+        var stdout = new System.Text.StringBuilder();
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+            {
+                return;
+            }
+
+            lock (stdout)
+            {
+                stdout.Append(e.Data).Append('\n');
+            }
+
+            echo?.WriteLine(e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is not null)
+            {
+                echo?.WriteLine(e.Data);
+            }
+        };
+
+        if (!process.Start())
         {
             return null;
         }
 
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(GitTimeout))
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        if (!process.WaitForExit(timeout))
         {
             process.Kill(entireProcessTree: true);
             return null;
         }
 
         process.WaitForExit(); // Akışların sonuna kadar okunması için.
-        _ = stderr.GetAwaiter().GetResult();
-        return (process.ExitCode, stdout.GetAwaiter().GetResult());
+        lock (stdout)
+        {
+            return (process.ExitCode, stdout.ToString());
+        }
     }
 }
 
@@ -207,9 +310,18 @@ public static class GitExecutable
     public static string Resolve(string? configured) =>
         Resolve(configured, Environment.GetEnvironmentVariable("PATH") ?? string.Empty, Directory.GetCurrentDirectory());
 
-    /// <summary>Aynı kural; PATH ve çalışma klasörü dışarıdan verilir (test edilebilsin diye).</summary>
-    public static string Resolve(string? configured, string pathVariable, string currentDirectory)
+    /// <summary>Aynı kural, başka bir ikili için (ör. kilitli testte <c>dotnet</c>).</summary>
+    public static string ResolveTool(string baseName, string? configured) =>
+        Resolve(configured, Environment.GetEnvironmentVariable("PATH") ?? string.Empty, Directory.GetCurrentDirectory(), baseName);
+
+    /// <summary>git için kural; PATH ve çalışma klasörü dışarıdan verilir (test edilebilsin diye).</summary>
+    public static string Resolve(string? configured, string pathVariable, string currentDirectory) =>
+        Resolve(configured, pathVariable, currentDirectory, "git");
+
+    /// <summary>Genel kural: verilen ad için PATH'te güvenilir yol.</summary>
+    public static string Resolve(string? configured, string pathVariable, string currentDirectory, string baseName)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseName);
         ArgumentNullException.ThrowIfNull(pathVariable);
         ArgumentNullException.ThrowIfNull(currentDirectory);
         if (!string.IsNullOrWhiteSpace(configured))
@@ -219,7 +331,7 @@ public static class GitExecutable
                 : throw new InvalidOperationException("Git:Path tam bir yol olmalı ve dosya var olmalı.");
         }
 
-        var name = OperatingSystem.IsWindows() ? "git.exe" : "git";
+        var name = OperatingSystem.IsWindows() ? baseName + ".exe" : baseName;
         var current = Path.GetFullPath(currentDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         foreach (var entry in pathVariable.Split(Path.PathSeparator))
@@ -243,6 +355,6 @@ public static class GitExecutable
             }
         }
 
-        throw new InvalidOperationException("git PATH'te bulunamadı. Git:Path ayarıyla tam yolu verin.");
+        throw new InvalidOperationException(baseName + " PATH'te bulunamadı. Tam yolu ayarla verin (ör. Git:Path).");
     }
 }

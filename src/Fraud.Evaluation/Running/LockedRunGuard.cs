@@ -49,6 +49,25 @@ public static class LockedRunGuard
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
+    /// <summary>
+    /// Eski konumdaki kilidi dikkate alarak bilet alır (mentör bulgusu): Eski konumda bir kayıt varsa ve yeni konumda yoksa,
+    /// kayıt önce yeni konuma KOPYALANIR, sonra normal <see cref="Acquire"/> çalışır. Böylece eski kayıt varken
+    /// <c>--allow-rerun</c> ile alınan bilet "ilk" değil "yeniden çalıştırma" olur; ilk çalıştırma eski kayıttaki kalır.
+    /// </summary>
+    public static LockedRunTicket AcquireWithLegacy(
+        string lockFile, string legacyLockFile, string configSha256, string commit, DateTimeOffset now, bool allowRerun = false, string? rerunReason = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(lockFile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(legacyLockFile);
+        if (File.Exists(legacyLockFile) && !File.Exists(lockFile))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(lockFile))!);
+            File.Copy(legacyLockFile, lockFile, overwrite: false);
+        }
+
+        return Acquire(lockFile, configSha256, commit, now, allowRerun, rerunReason);
+    }
+
     /// <summary>Tam git commit kimliği: 40 küçük harf onaltılık karakter (SHA-1).</summary>
     public static bool IsFullCommitId(string value) =>
         value is { Length: 40 } && value.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f');
