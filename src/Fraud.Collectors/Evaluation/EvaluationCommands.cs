@@ -108,7 +108,7 @@ public static class EvaluationCommands
         }
 
         var data = await loader.LoadAsync(
-            Arg(args, "controls"), Arg(args, "clusters"), config.ArchiveKnownDelay, mode == EvaluationMode.Prospective, cancellationToken)
+            Arg(args, "clusters"), config.ArchiveKnownDelay, mode == EvaluationMode.Prospective, cancellationToken)
             .ConfigureAwait(false);
 
         var c = data.Counts;

@@ -173,13 +173,13 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         File.WriteAllText(Path.Combine(root, RepoContext.MarkerFile), "");
         var repo = RepoContext.At(root);
         var worktree = Path.Combine(_dir.FullName, "gecici");
-        var args = EvaluationCommands.ParseArgs(["--commit", new string('a', 40), "--controls", Path.Combine(root, "data", "private", "k.csv")]);
+        var args = EvaluationCommands.ParseArgs(["--commit", new string('a', 40), "--clusters", Path.Combine(root, "data", "private", "k.csv")]);
 
         var inner = LockedRunOrchestrator.InnerArguments(repo, Fraud.Evaluation.EvaluationMode.Locked, worktree, Path.Combine(root, "config", "eval.json"), args).ToDictionary(x => x.Key, x => x.Value);
 
         Assert.Equal("Locked", inner["mode"]);
         Assert.Equal(Path.Combine(worktree, "config", "eval.json"), inner["config"]);
-        Assert.Equal(Path.Combine(root, "data", "private", "k.csv"), inner["controls"]);
+        Assert.Equal(Path.Combine(root, "data", "private", "k.csv"), inner["clusters"]);
         Assert.True(LockedRunOrchestrator.IsInside(Path.Combine(worktree, "src", "a.dll"), worktree));
         Assert.False(LockedRunOrchestrator.IsInside(Path.Combine(root, "src", "a.dll"), worktree));
     }

@@ -26,7 +26,11 @@ public enum G3aAttemptClass
 }
 
 /// <summary>Deneme kaydı (data/private/control/g3a-deneme.json). Alan adı yok; terim ve ay da yazılmaz, yalnızca tohum.</summary>
-public sealed record G3aTrialResult(DateTimeOffset At, IReadOnlyList<G3aAttemptClass> Attempts, IReadOnlyList<int> MonthDomains, bool Passed);
+public sealed record G3aTrialResult(DateTimeOffset At, IReadOnlyList<G3aAttemptClass> Attempts, IReadOnlyList<int> MonthDomains, bool Passed)
+{
+    /// <summary>"basladi" (ilk sorgudan önce yazılır) ya da "bitti". "basladi" kalan kayıt da kullanılmış sayılır.</summary>
+    public string Status { get; init; } = "bitti";
+}
 
 /// <summary>
 /// G3a önkoşul denemesi (KONTROL_LISTESI_KURULUM.md 3.3; Değişiklik kaydı 2026-11-20 madde 5): Tek terim, tek ay, aynı
@@ -63,7 +67,7 @@ public static class G3aTrial
         var file = Path.Combine(ctx.ControlDirectory, "g3a-deneme.json");
         if (File.Exists(file))
         {
-            await ctx.Output.WriteLineAsync("G3a denemesi daha önce yapıldı; ikinci kez yapılmaz.").ConfigureAwait(false);
+            await ctx.Output.WriteLineAsync("G3a denemesi daha önce başlatıldı (yarıda kalmış olsa da); ikinci kez yapılmaz.").ConfigureAwait(false);
             return 2;
         }
 
@@ -83,6 +87,16 @@ public static class G3aTrial
 
         var term = ControlSeeds.Order(BaselineTerms, "kontrol-g3a-terim")[0];
         var month = ControlSeeds.Order(months, "kontrol-g3a-ay")[0];
+
+        // C2: Kayıt İLK sorgudan önce "başladı" olarak yazılır (CreateNew). Ctrl+C, hata ya da kötü görünen ilk cevap denemeyi
+        // silmenin yolu olmaz: "başladı" kalan kayıt da kullanılmış sayılır (kilitli testteki kural).
+        Directory.CreateDirectory(ctx.ControlDirectory);
+        await using (var stream = new FileStream(file, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            await JsonSerializer.SerializeAsync(stream, new G3aTrialResult(now, [], [], Passed: false) { Status = "basladi" }, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var classes = new List<G3aAttemptClass>();
         var counts = new List<int>();
         for (var i = 0; i < Attempts; i++)
@@ -90,16 +104,17 @@ public static class G3aTrial
             var (cls, domains) = Classify(await fetch(QueryUri(term), cancellationToken).ConfigureAwait(false), month, ctx);
             classes.Add(cls);
             counts.Add(domains);
-            await ctx.Output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture, $"Deneme {i + 1}: {cls}, hedef ayda kayıtlı alan adı={domains}."))
-                .ConfigureAwait(false);
         }
 
         var passed = classes.Count(c => c == G3aAttemptClass.Passed) >= 2;
-        var result = new G3aTrialResult(now, classes, counts, passed);
-        Directory.CreateDirectory(ctx.ControlDirectory);
-        await using (var stream = new FileStream(file, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        var result = new G3aTrialResult(now, classes, counts, passed) { Status = "bitti" };
+        await File.WriteAllBytesAsync(file, JsonSerializer.SerializeToUtf8Bytes(result), cancellationToken).ConfigureAwait(false);
+
+        // Sonuçlar yalnızca üç deneme bitince basılır.
+        for (var i = 0; i < Attempts; i++)
         {
-            await JsonSerializer.SerializeAsync(stream, result, cancellationToken: cancellationToken).ConfigureAwait(false);
+            await ctx.Output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture, $"Deneme {i + 1}: {classes[i]}, hedef ayda kayıtlı alan adı={counts[i]}."))
+                .ConfigureAwait(false);
         }
 
         await ctx.Output.WriteLineAsync(passed

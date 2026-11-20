@@ -129,3 +129,12 @@ Bu kararlar Kadircan tarafından onaylandı. Hiçbir sinyal sonucu görülmeden 
 18. **İleriye dönük test yalnızca sabitlenmiş TSA köklerini kabul eder.** Kabul edilen kökler `src/Fraud.Collectors/Evaluation/tsa_roots.txt` dosyasında tutulur. Liste boşken ileriye dönük test çalışmaz. Bir kök, taahhütten önce bu listeye eklenip commit edilmelidir. Zaman damgasının iptal edilip edilmediği (CRL/OCSP) denetlenmez.
 19. **Eski konumdaki kilit yeni konuma taşınır.** Kilit kaydı eski konumda bulunursa yeni konuma taşınır. O kayıt varken alınan her yeni bilet "yeniden çalıştırma" sayılır.
 20. **İleriye dönük test de temiz kopyada çalışır.** İleriye dönük test de yalnızca HEAD'den açılmış temiz ve geçici bir worktree'de derlenen programla çalışır. `--commit` zorunludur. Kullanılan TSA kökünün `tsa_roots.txt` dosyasına eklendiği commit, damga zamanından önce olmalıdır. Değilse ya da böyle bir commit bulunamazsa sonuç basılmaz. Bilinen sınır: Commit tarihi, commit'i yapanın kendi beyanıdır. Kasıtlı geriye tarihlemeye karşı tek koruma, kökü ekleyen commit'in taahhütten önce uzak depoya itilmesi ya da damgalanmasıdır.
+
+## 2026-11-20: Kontrol grubu kurulumunda verilen kararlar
+
+| Konu | Karar |
+|---|---|
+| Tek grup kuralı | Bir alan adı yalnızca bir kontrol grubunda bulunabilir. Gruplar sırayla kurulur. Daha önce başka bir gruba girmiş bir ad sonraki gruba alınmaz ve E02 koduyla elenir. Bu, KONTROL_GRUBU_YONTEMI.md 4.2 madde 6'dan bilinçli bir sapmadır. Belgeye göre sonradan G3'e giren bir ad G4a'dan çıkarılmıyordu. Seçilen yol, sonuçların daha sade okunmasını sağlar. |
+| K çerçevesi | G3'ün K çerçevesine de N çerçevesindeki kurallar uygulanır: donmuş sözlük, "yeni" şartı (ilk sertifika en fazla 28 gün önce) ve çerçeve başına haftada en fazla 60 ad. Bir adın ilk görülme zamanı, `ct_candidates` tablosundaki en eski kayıt zamanıdır. |
+| Kişi adı deseni (E04) | Belge yalnızca sayım yapılmasını istiyor ve desen tanımlamıyor. Bu yüzden şimdilik uygulanmadı. Desen tanımlanırsa uygulanması buraya yazılır. |
+| Kontrol komutlarının çalıştığı yer | Kontrol komutları Ubuntu'da Docker Compose'un `tools` profilindeki servisle çalışır. Servis .NET SDK imajını kullanır ve veritabanına iç ağ üzerinden bağlanır. Veritabanı portu dışarı açılmaz. |

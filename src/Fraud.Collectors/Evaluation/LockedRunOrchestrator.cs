@@ -143,7 +143,7 @@ public static class LockedRunOrchestrator
         }
 
         // Gizli ya da depo dışındaki dosyalar tam yolla (ileriye dönük kipte taahhüt dosyaları da).
-        foreach (var key in new[] { "controls", "clusters", "commitment", "opening", "tsq", "tsr" })
+        foreach (var key in new[] { "clusters", "commitment", "opening", "tsq", "tsr" })
         {
             if (args.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
             {

@@ -198,6 +198,55 @@ services:
     pids_limit: 128
     stop_grace_period: 30s
 
+  # Araç servisi: Yalnızca "--profile tools" ile ve "run --rm" ile çalışır; hiç sürekli çalışmaz, port yayımlamaz.
+  # Kontrol listesi ve ölçüm komutları depo kökünde (/repo) derlenip çalıştırılır: git, docs/research/finans_sozlugu.txt
+  # ve docs/evaluation/control_sources.json gerekir. Kullanım (bu klasörden):
+  #   docker compose --profile tools run --rm tools control-build-g1 --input data/private/control/src/bddk-77-<tarih>.html
+  # Depo salt okunur; yalnızca data/private ve docs/evaluation/commitments yazılabilir (ikisi de konakta önceden olmalı:
+  # mkdir -p ../../data/private ../../docs/evaluation/commitments). Radar token'ı deploy/linux/secrets/cloudflare_radar_token
+  # dosyasından okunur; depo bağlaması salt okunur olduğu için token da salt okunur. Ayrı bir dosya bağlaması bilerek yok:
+  # Dosya yokken Docker konakta onun yerine kök sahipli bir KLASÖR açardı. Dış ağ yalnızca kodun izin listesindeki
+  # ana bilgisayarlar için (bddk.org.tr, tranco-list.eu, api.cloudflare.com, crt.sh); bağlantı anında denetlenir.
+  # Sınır: Depo salt okunur olduğu için kilitli test (git worktree) bu serviste çalışmaz.
+  tools:
+    profiles: ["tools"]
+    build:
+      context: ./tools
+      args:
+        TOOLS_UID: ${TOOLS_UID:-1000}
+    image: fraud-lab-tools:linux
+    restart: "no"
+    user: "${TOOLS_UID:-1000}:${TOOLS_UID:-1000}"
+    working_dir: /repo
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__FraudDb: "Host=db;Port=5432;Database=fraud_lab;Username=fraud_lab;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
+      Database__MigrateOnStartup: "false"
+      Collection__MeasurementLocation: ${MEASUREMENT_LOCATION:-lab-linux}
+    volumes:
+      - ../..:/repo:ro
+      - ../../data/private:/repo/data/private
+      - ../../docs/evaluation/commitments:/repo/docs/evaluation/commitments
+      - tools_nuget:/nuget
+      - tools_build:/build
+    networks:
+      - backend
+      - egress
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+      - /home/tools:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 512
+
 networks:
   # İç ağ: Dışarıya çıkışı yok. Veritabanı yalnızca burada.
   backend:
@@ -211,3 +260,6 @@ networks:
 
 volumes:
   db_data:
+  # Araç servisinin NuGet önbelleği ve derleme çıktısı (her çalıştırmada yeniden indirme ve tam derleme olmasın).
+  tools_nuget:
+  tools_build:

@@ -48,6 +48,7 @@ public sealed class ControlBuildTests(PostgresFixture postgres) : IDisposable
             Output = output,
             Time = new FakeTimeProvider(Now),
             Tranco = tranco,
+            PinnedSources = new ControlSources("AB12C", new DateOnly(2026, 11, 21)),
             Radar = radar,
             FirstCertificate = firstCertificate,
         };
@@ -117,7 +118,7 @@ public sealed class ControlBuildTests(PostgresFixture postgres) : IDisposable
             }
 
             using var output = new StringWriter();
-            Assert.Equal(0, await ControlCommands.BuildG4aAsync(Context(db, output, tranco), "AB12C", ct));
+            Assert.Equal(0, await ControlCommands.BuildG4aAsync(Context(db, output, tranco), ct));
             AssertNoNames(output.ToString(), "ornek.example", "github");
             db.ChangeTracker.Clear();
             return await db.ControlMembers.Where(m => m.Group == ControlGroup.G4a)
@@ -155,7 +156,7 @@ public sealed class ControlBuildTests(PostgresFixture postgres) : IDisposable
             : ["Shopping"]);
         using var output = new StringWriter();
 
-        Assert.Equal(0, await ControlCommands.BuildG2Async(Context(db, output, tranco, radar), "AB12C", ct));
+        Assert.Equal(0, await ControlCommands.BuildG2Async(Context(db, output, tranco, radar), ct));
 
         db.ChangeTracker.Clear();
         var names = await db.ControlMembers.Select(m => m.Domain.RegistrableDomain).ToListAsync(ct);
@@ -163,7 +164,7 @@ public sealed class ControlBuildTests(PostgresFixture postgres) : IDisposable
         Assert.Equal(expected, names.Count);
         Assert.All(names, n => Assert.True(n.StartsWith("haber", StringComparison.Ordinal) || n.StartsWith("okul", StringComparison.Ordinal)));
         Assert.DoesNotContain("Not: 100'den az üye", output.ToString(), StringComparison.Ordinal);
-        Assert.True(File.Exists(Path.Combine(_root.FullName, "data", "private", "control", "g2-onkosul-AB12C.json")));
+        Assert.True(File.Exists(Path.Combine(_root.FullName, "data", "private", "control", "g2-onkosul.json")));
         AssertNoNames(output.ToString(), "haber-ornek", "okul-ornek");
     }
 
@@ -175,23 +176,32 @@ public sealed class ControlBuildTests(PostgresFixture postgres) : IDisposable
         var tranco = new FakeTranco(File.ReadAllBytes(ControlRuleTests.Fixture("tranco-ornek.csv")));
 
         using var noToken = new StringWriter();
-        Assert.Equal(64, await ControlCommands.BuildG2Async(Context(db, noToken, tranco), "AB12C", ct));
+        Assert.Equal(64, await ControlCommands.BuildG2Async(Context(db, noToken, tranco), ct));
         Assert.Contains("Radar token'ı yok", noToken.ToString(), StringComparison.Ordinal);
+        var trialFile = Path.Combine(_root.FullName, "data", "private", "control", "g2-onkosul.json");
 
-        // Kategorisiz cevaplar: deneme geçmez (< 80/100), kayıt yazılır, ikinci çalıştırma B seçeneğini söyler.
-        var empty = new FakeRadar(_ => []);
-        using var failed = new StringWriter();
-        Assert.Equal(2, await ControlCommands.BuildG2Async(Context(db, failed, tranco, empty), "AB12C", ct));
-        using var rerun = new StringWriter();
-        Assert.Equal(2, await ControlCommands.BuildG2Async(Context(db, rerun, tranco, new FakeRadar(_ => ["News & Media"])), "AB12C", ct));
-        Assert.Contains("B seçeneğine", rerun.ToString(), StringComparison.Ordinal);
-        Assert.Equal(0, await db.ControlMembers.CountAsync(ct));
+        // Ön sorgu başarısız (token ya da izin): deneme başlamaz, kayıt yazılmaz; düzeltip yeniden denenebilir.
+        using var preflight = new StringWriter();
+        Assert.Equal(2, await ControlCommands.BuildG2Async(Context(db, preflight, tranco, new FakeRadar(_ => null)), ct));
+        Assert.False(File.Exists(trialFile));
 
-        // Hatalı deneme (ör. 401) kaydedilmez: Başka bir liste kimliğiyle denenebilir, "kategori yok" sayılmaz.
+        // Deneme içinde hata (ön sorgu geçti): kayıt ilk sorgudan önce yazıldığı için deneme KULLANILDI (C2).
         using var errors = new StringWriter();
-        Assert.Equal(2, await ControlCommands.BuildG2Async(Context(db, errors, tranco, new FakeRadar(_ => null)), "XY99Z", ct));
-        Assert.Contains("Deneme geçersiz", errors.ToString(), StringComparison.Ordinal);
-        Assert.False(File.Exists(Path.Combine(_root.FullName, "data", "private", "control", "g2-onkosul-XY99Z.json")));
+        var flaky = new FakeRadar(n => n == ControlCommands.PreflightDomain ? ["Technology"] : null);
+        Assert.Equal(2, await ControlCommands.BuildG2Async(Context(db, errors, tranco, flaky), ct));
+        Assert.Contains("Errored", File.ReadAllText(trialFile), StringComparison.Ordinal);
+
+        // Tek kayıt dosyası (C1): Başka bir sabitlenmiş listeyle bile yeniden denenemez.
+        using var rerun = new StringWriter();
+        var other = Context(db, rerun, tranco, new FakeRadar(_ => ["News & Media"]));
+        var rerunCtx = new ControlContext
+        {
+            Db = db, Full = other.Full, IcannOnly = other.IcannOnly, Repo = other.Repo, Output = rerun, Time = other.Time,
+            Tranco = tranco, Radar = other.Radar, PinnedSources = new ControlSources("XY99Z", new DateOnly(2026, 11, 22)),
+        };
+        Assert.Equal(2, await ControlCommands.BuildG2Async(rerunCtx, ct));
+        Assert.Contains("daha önce kullanıldı", rerun.ToString(), StringComparison.Ordinal);
+        Assert.Equal(0, await db.ControlMembers.CountAsync(ct));
     }
 
     [Fact]

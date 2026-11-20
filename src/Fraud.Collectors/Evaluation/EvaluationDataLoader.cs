@@ -39,7 +39,7 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
     public static DateTimeOffset DecisionTime(DateOnly date) => new(date.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(3));
 
     public async Task<EvaluationData> LoadAsync(
-        string? controlsCsv, string? clustersCsv, TimeSpan archiveDelay, bool prospective, CancellationToken cancellationToken)
+        string? clustersCsv, TimeSpan archiveDelay, bool prospective, CancellationToken cancellationToken)
     {
         var clusters = clustersCsv is null ? new Dictionary<string, string>(StringComparer.Ordinal) : ReadClusters(clustersCsv);
 
@@ -54,27 +54,23 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
             .ToList();
         var positiveNames = earliest.Select(a => a.RegistrableDomain).ToHashSet(StringComparer.Ordinal);
 
-        // 2) Kontroller.
+        // 2) Kontroller: control_members tablosundan (taahhüt edilmiş, kurma komutlarıyla seçilmiş üyeler). CSV yolu kaldırıldı:
+        // Tek kaynak, seçimi kayda geçiren tablo ve taahhüttür; elle yazılmış bir liste değerlendirmeye giremez.
         var rejected = 0;
         var overlapping = 0;
+        var memberRows = await db.ControlMembers
+            .Select(m => new { m.Domain.RegistrableDomain, m.Group, m.Frame, m.Week, m.CommitmentId, m.FirstCertificateAt })
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
         var controlRows = new List<ControlRow>();
-        if (controlsCsv is not null)
+        foreach (var m in memberRows)
         {
-            foreach (var row in ReadControls(controlsCsv))
+            if (positiveNames.Contains(m.RegistrableDomain))
             {
-                if (row is null)
-                {
-                    rejected++;
-                }
-                else if (positiveNames.Contains(row.Domain))
-                {
-                    overlapping++; // E01: pozitif listesindeki ad kontrol olamaz.
-                }
-                else
-                {
-                    controlRows.Add(row);
-                }
+                overlapping++; // E01: sonradan SPK listesine girdi; pozitif olarak sayılır, kontrol olmaz.
+                continue;
             }
+
+            controlRows.Add(new ControlRow(m.RegistrableDomain, GroupOf(m.Group), FrameOf(m.Frame), false, m.FirstCertificateAt, null, m.Week, m.CommitmentId));
         }
 
         // 3) Gözlemler: kayıtlı alan adı → domains satırları.
@@ -133,7 +129,11 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
         {
             DateTimeOffset? first = c.FirstCertificateAt ?? (firstCertificate.TryGetValue(c.Domain, out var f) ? f : null);
             subjects.Add(new Subject(
-                IdOf(c.Domain), c.Group, c.Subgroup, c.ReferenceTime, bulletin: null, ClusterOf(c.Domain, clusters), c.Linked, first));
+                IdOf(c.Domain), c.Group, c.Subgroup, c.ReferenceTime, bulletin: null, ClusterOf(c.Domain, clusters), c.Linked, first)
+            {
+                Week = c.Week,
+                CommitmentId = c.CommitmentId,
+            });
         }
 
         var counts = new EvaluationLoadCounts(earliest.Count, controlRows.Count, rejected, overlapping, certificates.Count, archives.Count, dns.Count);
@@ -182,62 +182,22 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
         return map;
     }
 
-    /// <summary>Geçersiz satır <c>null</c> döner ve sayılır; içeriği hiçbir yere yazılmaz (alan adı içerebilir).</summary>
-    private IEnumerable<ControlRow?> ReadControls(string path)
+    /// <summary>Kontrol grubu → ölçüm grubu. G4a ve G4b ikisi de "rastgele"; G4b'yi çerçevesi (N) ayırır.</summary>
+    public static SubjectGroup GroupOf(Fraud.Domain.Control.ControlGroup group) => group switch
     {
-        foreach (var cells in ReadRows(path, "registrable_domain,group,subgroup,cluster,linked_to_positive,first_certificate_at,reference_time"))
-        {
-            if (cells.Length != 7
-                || Normalize(cells[0]) is not { } name
-                || !TryParseName<SubjectGroup>(cells[1], out var group) || group == SubjectGroup.Positive
-                || !TryParseName<Subgroup>(cells[2], out var subgroup)
-                || subgroup is Subgroup.PositiveNew or Subgroup.PositiveEstablished or Subgroup.PositiveUnknownAge
-                || !TryParseBool(cells[4], out var linked)
-                || !TryParseTime(cells[5], out var first) || !TryParseTime(cells[6], out var reference))
-            {
-                yield return null;
-                continue;
-            }
+        Fraud.Domain.Control.ControlGroup.G1 => SubjectGroup.ControlLicensed,
+        Fraud.Domain.Control.ControlGroup.G2 => SubjectGroup.ControlFinanceNews,
+        Fraud.Domain.Control.ControlGroup.G3 => SubjectGroup.ControlHardNegative,
+        Fraud.Domain.Control.ControlGroup.CryptoActive => SubjectGroup.ControlCryptoActive,
+        _ => SubjectGroup.ControlRandom,
+    };
 
-            yield return new ControlRow(name, group, subgroup, linked, first, reference);
-        }
-    }
-
-    /// <summary>
-    /// Katı enum ayrıştırma (mentör maddesi 9): Yalnızca tanımlı ADLAR. <c>Enum.TryParse</c> "7" gibi tanımsız sayıları
-    /// ve "1,2" gibi bayrak birleşimlerini de kabul ederdi.
-    /// </summary>
-    private static bool TryParseName<TEnum>(string cell, out TEnum value)
-        where TEnum : struct, Enum
+    public static Subgroup FrameOf(Fraud.Domain.Control.SamplingFrame? frame) => frame switch
     {
-        value = default;
-        return cell.Length > 0 && cell.All(char.IsAsciiLetter)
-               && Enum.TryParse(cell, ignoreCase: false, out value) && Enum.IsDefined(value);
-    }
-
-    /// <summary>Yalnızca "true" ya da "false" (harf duyarsız). Başka her değer satırı reddeder; sessizce "false" sayılmaz.</summary>
-    private static bool TryParseBool(string cell, out bool value)
-    {
-        value = string.Equals(cell, "true", StringComparison.OrdinalIgnoreCase);
-        return value || string.Equals(cell, "false", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryParseTime(string cell, out DateTimeOffset? value)
-    {
-        value = null;
-        if (cell.Trim().Length == 0)
-        {
-            return true;
-        }
-
-        if (DateTimeOffset.TryParse(cell, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
-        {
-            value = parsed;
-            return true;
-        }
-
-        return false;
-    }
+        Fraud.Domain.Control.SamplingFrame.K => Subgroup.FrameTermConditioned,
+        Fraud.Domain.Control.SamplingFrame.N => Subgroup.FrameNeutral,
+        _ => Subgroup.None,
+    };
 
     /// <summary>Basit CSV: virgülle ayrılmış, tırnaksız. Alan adlarında virgül olmaz. İlk satır beklenen başlık olmalı.</summary>
     private static IEnumerable<string[]> ReadRows(string path, string header)
@@ -257,5 +217,7 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
         }
     }
 
-    private sealed record ControlRow(string Domain, SubjectGroup Group, Subgroup Subgroup, bool Linked, DateTimeOffset? FirstCertificateAt, DateTimeOffset? ReferenceTime);
+    private sealed record ControlRow(
+        string Domain, SubjectGroup Group, Subgroup Subgroup, bool Linked, DateTimeOffset? FirstCertificateAt, DateTimeOffset? ReferenceTime,
+        string? Week, string? CommitmentId);
 }

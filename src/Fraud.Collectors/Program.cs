@@ -42,8 +42,8 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --config <dosya> --commitment <açık dosya> --opening <açıklama>
 //   dotnet run --project src/Fraud.Collectors -- control-fetch-g1                       (tek istek, yalnızca www.bddk.org.tr)
 //   dotnet run --project src/Fraud.Collectors -- control-build-g1 --input <kaydedilmiş BDDK HTML>
-//   dotnet run --project src/Fraud.Collectors -- control-build-g2 --tranco-id <kimlik> [--token-file <dosya>]
-//   dotnet run --project src/Fraud.Collectors -- control-build-g4a --tranco-id <kimlik>
+//   dotnet run --project src/Fraud.Collectors -- control-build-g2 [--token-file <dosya>]   (Tranco kimliği: docs/evaluation/control_sources.json)
+//   dotnet run --project src/Fraud.Collectors -- control-build-g4a
 //   dotnet run --project src/Fraud.Collectors -- control-build-g3 --week yyyy-Www [--max-queries 600]
 //   dotnet run --project src/Fraud.Collectors -- control-build-g4b --week yyyy-Www [--max-queries 600]
 //   dotnet run --project src/Fraud.Collectors -- control-g3a-trial

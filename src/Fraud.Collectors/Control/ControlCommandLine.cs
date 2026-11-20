@@ -69,14 +69,11 @@ public static class ControlCommandLine
                     : await UsageAsync(output, "control-build-g1 --input <kaydedilmiş BDDK HTML>").ConfigureAwait(false);
 
             case "control-build-g2":
-                return Arg(args, "tranco-id") is { } g2List
-                    ? await ControlCommands.BuildG2Async(ctx, g2List, cancellationToken).ConfigureAwait(false)
-                    : await UsageAsync(output, "control-build-g2 --tranco-id <kimlik>").ConfigureAwait(false);
+                // Liste kimliği komut satırından alınmaz (C1): docs/evaluation/control_sources.json.
+                return await ControlCommands.BuildG2Async(ctx, cancellationToken).ConfigureAwait(false);
 
             case "control-build-g4a":
-                return Arg(args, "tranco-id") is { } g4aList
-                    ? await ControlCommands.BuildG4aAsync(ctx, g4aList, cancellationToken).ConfigureAwait(false)
-                    : await UsageAsync(output, "control-build-g4a --tranco-id <kimlik>").ConfigureAwait(false);
+                return await ControlCommands.BuildG4aAsync(ctx, cancellationToken).ConfigureAwait(false);
 
             case "control-build-g3":
             case "control-build-g4b":

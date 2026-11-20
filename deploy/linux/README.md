@@ -131,19 +131,32 @@ docker compose -f docker-compose.ct.yml start network
 
 **Kurma sırası** (öncelik G1 > G2 > G3 > G4; her komut aynı haftayı ya da aynı tek seferlik grubu ikinci kez kurmaz):
 
-Komutlar `migrate` imajıyla değil, depo kökünde (`git` ve `docs/research/finans_sozlugu.txt` gerekir) çalıştırılır:
-`dotnet run --project src/Fraud.Collectors -- <komut>`. Bağlantı metni `ConnectionStrings__FraudDb` ortam değişkeniyle
-verilir (db portu yayımlanmadığı için `docker compose exec`/tünel ya da salt okunur kopya; bkz. "Veriyi Windows makineye taşıma").
+Komutlar `tools` profiliyle çalışır (depo `/repo` olarak salt okunur bağlanır, `db:5432`'ye iç ağdan bağlanır, port
+yayımlamaz). İlk kullanımda imaj derlenir ve NuGet paketleri bir birime iner. Bu klasörden (`deploy/linux`):
 
-1. `control-fetch-g1` (tek istek, yalnızca www.bddk.org.tr) → `control-build-g1 --input data/private/control/src/bddk-77-<tarih>.html`.
-   Çıktıdaki `web_adresi` sayısı yaklaşık 66 olmalı; çok farklıysa sayfa yapısı değişmiştir, devam etmeyin.
-2. Tranco liste kimliğini seçim günü sabitleyin (`https://tranco-list.eu/api/lists/date/<yyyyMMdd>`), sonra
-   `control-build-g2 --tranco-id <kimlik>`. Radar token'ı `deploy/linux/secrets/cloudflare_radar_token` dosyasında
-   (izin 600). Token yoksa komut durur. Önce %80 önkoşul denemesi yapılır; geçmezse G2 kurulmaz (B seçeneği).
-3. `control-build-g4a --tranco-id <aynı kimlik>`.
-4. Her hafta bittikten sonra, sırayla: `control-build-g3 --week 2026-W47`, sonra `control-build-g4b --week 2026-W47`.
-   Yaş için aday başına bir crt.sh sorgusu (15 sn) yapılır; `network` servisini önce durdurun.
-5. `control-g3a-trial` (bir kez; saatin ilk 10 dakikasında başlamaz).
+```bash
+mkdir -p ../../data/private ../../docs/evaluation/commitments
+docker compose --profile tools build tools                  # bir kez (TOOLS_UID .env'de yoksa 1000; `id -u` ile aynı olmalı)
+docker compose stop network                                  # crt.sh kilidi: kontrol komutları network ile aynı anda çalışmaz
+docker compose --profile tools run --rm tools control-fetch-g1
+docker compose --profile tools run --rm tools control-build-g1 --input data/private/control/src/bddk-77-<yyyyMMdd>.html
+# Tranco kimliğini ../../docs/evaluation/control_sources.json'a yazın ve COMMIT edin (temiz ağaç şart):
+#   { "tranco": { "listId": "<kimlik>", "date": "<yyyy-MM-dd>" } }
+docker compose --profile tools run --rm tools control-build-g2
+docker compose --profile tools run --rm tools control-build-g4a
+docker compose --profile tools run --rm tools control-build-g3 --week 2026-W47
+docker compose --profile tools run --rm tools control-build-g4b --week 2026-W47
+docker compose --profile tools run --rm tools control-g3a-trial
+docker compose start network
+```
+
+1. G1: çıktıdaki `web_adresi` yaklaşık 66 olmalı; çok farklıysa sayfa yapısı değişmiştir, devam etmeyin.
+2. G2: Radar token'ı `deploy/linux/secrets/cloudflare_radar_token` (izin 600). Önce Radar'a deneme dışı tek bir ön
+   sorgu; geçerse %80 önkoşul denemesi. Deneme kaydı ilk sorgudan önce yazılır: yarıda kalan ya da hatalı biten deneme
+   de kullanılmış sayılır, başka bir listeyle de yeniden denenemez. Geçmezse G2 kurulmaz (B seçeneği).
+3. G4a aynı sabitlenmiş listeyi kullanır.
+4. G3, G4b: her hafta bittikten sonra, önce G3 sonra G4b. Aday başına bir crt.sh sorgusu (15 sn).
+5. G3a: bir kez; saatin ilk 10 dakikasında başlamaz; kayıt ilk sorgudan önce yazılır.
 
 Her kurma bir taahhüt üretir: gizli açıklama `data/private/commitments/`, açık dosya `docs/evaluation/commitments/`
 (commit edilir). Kontrol üyelerinin DNS'i haftalık, cumartesi ve pazara karışık bölünür (`Collection__ControlDnsDays`).

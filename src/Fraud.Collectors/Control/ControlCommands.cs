@@ -36,6 +36,11 @@ public sealed class ControlContext
 
     public ITrancoClient? Tranco { get; init; }
 
+    /// <summary>
+    /// Sabitlenmiş kaynaklar (C1). Boşsa docs/evaluation/control_sources.json git denetimleriyle okunur. Yalnızca testler verir.
+    /// </summary>
+    public ControlSources? PinnedSources { get; init; }
+
     /// <summary>Gizli çıktı klasörü: depo kökünde data/private/control.</summary>
     public string ControlDirectory => Path.GetDirectoryName(Repo.PrivatePath("data/private/control/.liste"))!;
 }
@@ -68,7 +73,7 @@ public static class ControlCommands
     public const int G2Size = 300;
     public const int G4aSize = 300;
 
-    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
 
     // ---- G1 ----
 
@@ -132,10 +137,16 @@ public static class ControlCommands
     // ---- G2 ----
 
     /// <summary>
-    /// <c>control-build-g2 --tranco-id &lt;kimlik&gt;</c>: Önce %80 önkoşul denemesi (ilk 1.000 sıradan tohumlu 100), geçerse
-    /// ilk 100.000 sıradan tohumlu sırayla Radar'a sorup kategori kümesine uyan ilk 300.
+    /// <c>control-build-g2</c>: Liste kimliği yalnızca sabitlenmiş dosyadan (C1). Önce %80 önkoşul denemesi (ilk 1.000 sıradan
+    /// tohumlu 100), geçerse ilk 100.000 sıradan tohumlu sırayla Radar'a sorup kategori kümesine uyan ilk 300.
     /// </summary>
-    public static async Task<int> BuildG2Async(ControlContext ctx, string listId, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Deneme kaydı TEK dosyadır (g2-onkosul.json) ve listeye bağlı değildir: Başka bir listeyle yeniden denenemez (C1).
+    /// Kayıt ilk deneme sorgusundan ÖNCE "başladı" olarak yazılır (C2): Yarıda kalan ya da hatalı biten deneme de
+    /// "kullanıldı" sayılır, kilitli testteki gibi. Token ya da izin hatası denemeyi yakmasın diye deneme dışı tek bir ön
+    /// sorgu yapılır (<see cref="PreflightDomain"/>); o başarısızsa hiçbir kayıt yazılmaz.
+    /// </remarks>
+    public static async Task<int> BuildG2Async(ControlContext ctx, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         if (ctx.Radar is null)
@@ -144,40 +155,48 @@ public static class ControlCommands
             return 64;
         }
 
-        if (await RefuseIfBuiltAsync(ctx, ControlGroup.G2, ControlBuild.OneShot, cancellationToken).ConfigureAwait(false)
+        if (await PinnedListIdAsync(ctx, cancellationToken).ConfigureAwait(false) is not { } listId
+            || await RefuseIfBuiltAsync(ctx, ControlGroup.G2, ControlBuild.OneShot, cancellationToken).ConfigureAwait(false)
             || await TrancoAsync(ctx, listId, cancellationToken).ConfigureAwait(false) is not { } tranco)
         {
             return 2;
         }
 
-        // 1) Önkoşul denemesi (kurulum belgesi 2.4). Sonuç bir kez yazılır; geçmediyse aynı listeyle yeniden denenmez.
-        var trialFile = Path.Combine(ctx.ControlDirectory, "g2-onkosul-" + listId + ".json");
+        // 1) Önkoşul denemesi (kurulum belgesi 2.4).
+        var trialFile = Path.Combine(ctx.ControlDirectory, "g2-onkosul.json");
         if (File.Exists(trialFile))
         {
-            var previous = JsonSerializer.Deserialize<G2Trial>(await File.ReadAllTextAsync(trialFile, cancellationToken).ConfigureAwait(false));
-            if (previous is not { Passed: true })
+            var previous = JsonSerializer.Deserialize<G2TrialRecord>(await File.ReadAllTextAsync(trialFile, cancellationToken).ConfigureAwait(false), Json);
+            if (previous is not { Status: TrialStatus.Passed })
             {
-                await ctx.Output.WriteLineAsync("Önkoşul denemesi daha önce geçmedi; karar 6'ya göre B seçeneğine (Wikidata) geçilir.").ConfigureAwait(false);
+                await ctx.Output.WriteLineAsync("Önkoşul denemesi daha önce kullanıldı (durum: " + (previous?.Status.ToString() ?? "okunamadı")
+                    + "). Karar 6: B seçeneğine (Wikidata) geçilir.").ConfigureAwait(false);
                 return 2;
             }
         }
         else
         {
-            var trial = await G2TrialAsync(ctx, tranco.Top(1000), "kontrol-g2-onkosul-" + listId, cancellationToken).ConfigureAwait(false);
-            await ctx.Output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
-                $"Önkoşul denemesi: sorulan={trial.Asked}, kategorili={trial.WithCategories}, kategorisiz={trial.Empty}, hata={trial.Errors}."))
-                .ConfigureAwait(false);
-            if (trial.Errors > 0)
+            if ((await ctx.Radar.CategoriesAsync(PreflightDomain, cancellationToken).ConfigureAwait(false)).IsError)
             {
-                // Hata "kategori yok" sayılmaz; hatalı deneme geçersizdir, kaydedilmez ve yeniden yapılabilir.
-                await ctx.Output.WriteLineAsync("Deneme geçersiz (hata var: token, izin ya da ağ). Kayıt yazılmadı.").ConfigureAwait(false);
+                await ctx.Output.WriteLineAsync("Radar ön sorgusu başarısız (token, izin ya da ağ). Deneme başlamadı, kayıt yazılmadı.").ConfigureAwait(false);
                 return 2;
             }
 
-            await WriteNewAsync(trialFile, JsonSerializer.SerializeToUtf8Bytes(trial, Json), cancellationToken).ConfigureAwait(false);
-            if (!trial.Passed)
+            // Kayıt ilk sorgudan ÖNCE: Ctrl+C ya da hata denemeyi silmenin yolu olmasın (C2).
+            await WriteNewAsync(trialFile, JsonSerializer.SerializeToUtf8Bytes(new G2TrialRecord(TrialStatus.Started, listId, ctx.Time.GetUtcNow(), null), Json),
+                cancellationToken).ConfigureAwait(false);
+            var trial = await G2TrialAsync(ctx, tranco.Top(1000), "kontrol-g2-onkosul-" + listId, cancellationToken).ConfigureAwait(false);
+            var status = trial.Errors > 0 ? TrialStatus.Errored : trial.Passed ? TrialStatus.Passed : TrialStatus.Failed;
+            await File.WriteAllBytesAsync(trialFile, JsonSerializer.SerializeToUtf8Bytes(new G2TrialRecord(status, listId, ctx.Time.GetUtcNow(), trial), Json),
+                cancellationToken).ConfigureAwait(false);
+
+            // Sonuç yalnızca deneme bitince basılır.
+            await ctx.Output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
+                $"Önkoşul denemesi: sorulan={trial.Asked}, kategorili={trial.WithCategories}, kategorisiz={trial.Empty}, hata={trial.Errors}, durum={status}."))
+                .ConfigureAwait(false);
+            if (status != TrialStatus.Passed)
             {
-                await ctx.Output.WriteLineAsync("Önkoşul geçmedi (< 80/100). Karar 6: B seçeneğine geçilir; G2 bu yolla kurulmadı.").ConfigureAwait(false);
+                await ctx.Output.WriteLineAsync("Önkoşul geçmedi ya da hatalı bitti; deneme kullanıldı. Karar 6: B seçeneğine geçilir.").ConfigureAwait(false);
                 return 2;
             }
         }
@@ -234,7 +253,22 @@ public static class ControlCommands
         return await FinishAsync(ctx, ControlGroup.G2, ControlBuild.OneShot, seed, listId, selected, counts, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>G2 önkoşul denemesinin kaydı. Alan adı yok.</summary>
+    /// <summary>Deneme ön sorgusunun alan adı: herkese açık, kontrol listesinde olmayan bir ad (token ve izin denetimi).</summary>
+    public const string PreflightDomain = "cloudflare.com";
+
+    /// <summary>Bir önkoşul denemesinin durumu. "Başladı" kalan kayıt yarıda kesilmiş bir denemedir ve kullanılmış sayılır.</summary>
+    public enum TrialStatus
+    {
+        Started = 1,
+        Passed = 2,
+        Failed = 3,
+        Errored = 4,
+    }
+
+    /// <summary>G2 deneme kaydı (tek dosya). Alan adı yok.</summary>
+    public sealed record G2TrialRecord(TrialStatus Status, string ListId, DateTimeOffset At, G2Trial? Result);
+
+    /// <summary>G2 önkoşul denemesinin sayıları. Alan adı yok.</summary>
     public sealed record G2Trial(int Asked, int WithCategories, int Empty, int Errors)
     {
         public bool Passed => Errors == 0 && WithCategories >= 80;
@@ -267,11 +301,12 @@ public static class ControlCommands
 
     // ---- G4a ----
 
-    /// <summary><c>control-build-g4a --tranco-id &lt;kimlik&gt;</c>: Listenin tamamından, elemelerden sonra tohumlu ilk 300.</summary>
-    public static async Task<int> BuildG4aAsync(ControlContext ctx, string listId, CancellationToken cancellationToken)
+    /// <summary><c>control-build-g4a</c>: Sabitlenmiş listenin tamamından, elemelerden sonra tohumlu ilk 300.</summary>
+    public static async Task<int> BuildG4aAsync(ControlContext ctx, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        if (await RefuseIfBuiltAsync(ctx, ControlGroup.G4a, ControlBuild.OneShot, cancellationToken).ConfigureAwait(false)
+        if (await PinnedListIdAsync(ctx, cancellationToken).ConfigureAwait(false) is not { } listId
+            || await RefuseIfBuiltAsync(ctx, ControlGroup.G4a, ControlBuild.OneShot, cancellationToken).ConfigureAwait(false)
             || await TrancoAsync(ctx, listId, cancellationToken).ConfigureAwait(false) is not { } tranco)
         {
             return 2;
@@ -510,12 +545,25 @@ public static class ControlCommands
             await store.ExistingMembersAsync(cancellationToken).ConfigureAwait(false));
     }
 
+    /// <summary>Sabitlenmiş Tranco liste kimliği (C1): test verdiyse o, değilse git denetimli dosya.</summary>
+    private static async Task<string?> PinnedListIdAsync(ControlContext ctx, CancellationToken cancellationToken)
+    {
+        var sources = ctx.PinnedSources ?? await ControlSourcesFile.LoadAsync(ctx.Repo, ctx.Output, cancellationToken).ConfigureAwait(false);
+        if (sources is not null)
+        {
+            await ctx.Output.WriteLineAsync("Sabitlenmiş Tranco listesi: " + sources.TrancoListId + " (" + sources.TrancoDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ").")
+                .ConfigureAwait(false);
+        }
+
+        return sources?.TrancoListId;
+    }
+
     /// <summary>Önbellekli Tranco listesi: data/private/control/src/tranco-&lt;kimlik&gt;.csv yoksa bir kez indirilir.</summary>
     private static async Task<TrancoList?> TrancoAsync(ControlContext ctx, string listId, CancellationToken cancellationToken)
     {
         if (!TrancoApiParser.IsListId(listId))
         {
-            await ctx.Output.WriteLineAsync("--tranco-id geçerli bir liste kimliği değil.").ConfigureAwait(false);
+            await ctx.Output.WriteLineAsync("Sabitlenmiş Tranco liste kimliği geçerli değil.").ConfigureAwait(false);
             return null;
         }
 

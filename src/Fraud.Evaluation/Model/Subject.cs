@@ -137,6 +137,12 @@ public sealed record Subject
 
     public bool IsPositive => Group == SubjectGroup.Positive;
 
+    /// <summary>Kontrol üyesinin kurulduğu ISO hafta (G3, G4b). Kilitli testte "F'de dondurulmuş üyeler" bununla seçilir.</summary>
+    public string? Week { get; init; }
+
+    /// <summary>Üyeyi kayda geçiren taahhüt.</summary>
+    public string? CommitmentId { get; init; }
+
     /// <summary>
     /// Pozitifin alt grubu: ilk sertifika karardan en çok 365 gün önceyse "yeni", daha önceyse "eski", karardan sonraysa
     /// "yaşı bilinmiyor". İlk sertifikası hiç bilinmeyen pozitif bu fonksiyona gelmez: ölçümden çıkar (mentör maddesi 8).

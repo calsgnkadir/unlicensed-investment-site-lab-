@@ -61,6 +61,31 @@ public sealed class ControlRuleTests
     }
 
     [Fact]
+    public async Task Control_sources_file_is_strict_and_must_be_tracked()
+    {
+        Assert.Equal(new ControlSources("AB12C", new DateOnly(2026, 11, 21)),
+            ControlSourcesFile.Parse(Encoding.UTF8.GetBytes("""{"tranco":{"listId":"AB12C","date":"2026-11-21"}}""")));
+        Assert.Null(ControlSourcesFile.Parse(Encoding.UTF8.GetBytes("""{"tranco":{"listId":"../x","date":"2026-11-21"}}""")));
+        Assert.Null(ControlSourcesFile.Parse(Encoding.UTF8.GetBytes("""{"tranco":{"listId":"AB12C"}}""")));
+
+        // Git deposu olmayan (izlenmeyen) bir kökte dosya olsa bile kabul edilmez.
+        var dir = Directory.CreateTempSubdirectory("sources-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, Fraud.Collectors.Evaluation.RepoContext.MarkerFile), "");
+            Directory.CreateDirectory(Path.Combine(dir.FullName, "docs", "evaluation"));
+            File.WriteAllText(Path.Combine(dir.FullName, ControlSourcesFile.RelativePath), """{"tranco":{"listId":"AB12C","date":"2026-11-21"}}""");
+            using var output = new StringWriter();
+            Assert.Null(await ControlSourcesFile.LoadAsync(Fraud.Collectors.Evaluation.RepoContext.At(dir.FullName), output, TestContext.Current.CancellationToken));
+            Assert.Contains("izlenmiyor", output.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void Seeded_order_is_deterministic_and_depends_on_the_seed()
     {
         var names = Enumerable.Range(0, 200).Select(i => "ad" + i.ToString(CultureInfo.InvariantCulture) + ".example").ToList();

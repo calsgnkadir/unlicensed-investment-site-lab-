@@ -68,20 +68,22 @@ public sealed class EvaluationLoaderTests(PostgresFixture postgres) : IDisposabl
         await using var db = await postgres.CreateMigratedContextAsync();
         var ct = TestContext.Current.CancellationToken;
         await SeedAsync(db, ct);
-        Directory.CreateDirectory(_dir);
-        var controls = Path.Combine(_dir, "controls.csv");
-        await File.WriteAllLinesAsync(controls,
-        [
-            "registrable_domain,group,subgroup,cluster,linked_to_positive,first_certificate_at,reference_time",
-            "kontrol-a.example,ControlHardNegative,FrameNeutral,,false,2026-02-01T00:00:00Z,",
-            "poz-a.example,ControlRandom,FrameNeutral,,false,2026-02-01T00:00:00Z,", // E01: pozitifle çakışıyor
-            "bozuk-satir,Positive,PositiveNew,,false,,",                              // reddedilir
-        ], ct);
+        // Kontroller control_members tablosundan: biri G3/N, biri sonradan pozitif olmuş (E01) bir G4a üyesi.
+        var kontrol = Domain("kontrol-a.example");
+        db.Domains.Add(kontrol);
+        db.ControlMembers.Add(new Fraud.Domain.Control.ControlMember(kontrol, Fraud.Domain.Control.ControlGroup.G3, Fraud.Domain.Control.SamplingFrame.N,
+            Now, "2026-W05", "kontrol-g3n-2026-W05", null, "kontrol-g3-2026-w05", firstCertificateAt: new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero)));
+        var pozA = await db.Domains.SingleAsync(d => d.Host == "poz-a.example", ct);
+        db.ControlMembers.Add(new Fraud.Domain.Control.ControlMember(pozA, Fraud.Domain.Control.ControlGroup.G4a, null, Now, null, "kontrol-g4a-x", "AB12C", "kontrol-g4a"));
+        await db.SaveChangesAsync(ct);
 
         var loader = new EvaluationDataLoader(db, new PublicSuffixDomainNormalizer(), new byte[32]);
-        var data = await loader.LoadAsync(controls, null, KnownAtPolicy.DefaultArchiveDelay, prospective: false, ct);
+        var data = await loader.LoadAsync(null, KnownAtPolicy.DefaultArchiveDelay, prospective: false, ct);
 
-        Assert.Equal(new EvaluationLoadCounts(2, 1, 1, 1, 1, 1, 1), data.Counts);
+        Assert.Equal(new EvaluationLoadCounts(2, 1, 0, 1, 1, 1, 1), data.Counts);
+        var control = Assert.Single(data.Subjects, s => !s.IsPositive);
+        Assert.Equal((SubjectGroup.ControlHardNegative, Subgroup.FrameNeutral, "2026-W05", "kontrol-g3-2026-w05"),
+            (control.Group, control.Subgroup, control.Week, control.CommitmentId));
         Assert.All(data.Subjects, s => Assert.StartsWith("s-", s.Id, StringComparison.Ordinal));
         Assert.All(data.Subjects, s => Assert.DoesNotContain("example", s.Id, StringComparison.Ordinal));
 
@@ -115,7 +117,7 @@ public sealed class EvaluationLoaderTests(PostgresFixture postgres) : IDisposabl
         await SeedAsync(db, ct);
 
         var data = await new EvaluationDataLoader(db, new PublicSuffixDomainNormalizer(), new byte[32])
-            .LoadAsync(null, null, KnownAtPolicy.DefaultArchiveDelay, prospective: true, ct);
+            .LoadAsync(null, KnownAtPolicy.DefaultArchiveDelay, prospective: true, ct);
 
         Assert.Equal(Now, data.Observations.Single(o => o.Kind == ObservationKinds.Archive).KnownAt);
         Assert.Equal(Now, data.Observations.Single(o => o.Kind == ObservationKinds.Certificate).KnownAt); // mentör 1
@@ -209,27 +211,16 @@ public sealed class EvaluationLoaderTests(PostgresFixture postgres) : IDisposabl
     }
 
     [Fact]
-    public async Task Control_csv_parsing_is_strict()
+    public void Control_groups_map_to_evaluation_groups_and_frames()
     {
-        await using var db = await postgres.CreateMigratedContextAsync();
-        var ct = TestContext.Current.CancellationToken;
-        Directory.CreateDirectory(_dir);
-        var controls = Path.Combine(_dir, "controls.csv");
-        await File.WriteAllLinesAsync(controls,
-        [
-            "registrable_domain,group,subgroup,cluster,linked_to_positive,first_certificate_at,reference_time",
-            "k1.example,ControlRandom,FrameNeutral,,True,2026-02-01T00:00:00Z,",   // kabul: harf duyarsız bool
-            "k2.example,7,FrameNeutral,,false,,",                                  // ret: sayı olarak grup
-            "k3.example,ControlRandom,FrameNeutral,,yes,,",                        // ret: bool değil
-            "k4.example,ControlRandom,PositiveUnknownAge,,false,,",                // ret: pozitif alt grubu
-            "k5.example,ControlRandom,1,,false,,",                                 // ret: sayı olarak alt grup
-        ], ct);
-
-        var data = await new EvaluationDataLoader(db, new PublicSuffixDomainNormalizer(), new byte[32])
-            .LoadAsync(controls, null, KnownAtPolicy.DefaultArchiveDelay, prospective: false, ct);
-
-        Assert.Equal((1, 4), (data.Counts.Controls, data.Counts.ControlsRejected));
-        Assert.True(Assert.Single(data.Subjects).LinkedToPositive);
+        Assert.Equal(SubjectGroup.ControlLicensed, EvaluationDataLoader.GroupOf(Fraud.Domain.Control.ControlGroup.G1));
+        Assert.Equal(SubjectGroup.ControlFinanceNews, EvaluationDataLoader.GroupOf(Fraud.Domain.Control.ControlGroup.G2));
+        Assert.Equal(SubjectGroup.ControlHardNegative, EvaluationDataLoader.GroupOf(Fraud.Domain.Control.ControlGroup.G3));
+        Assert.Equal(SubjectGroup.ControlRandom, EvaluationDataLoader.GroupOf(Fraud.Domain.Control.ControlGroup.G4a));
+        Assert.Equal(SubjectGroup.ControlRandom, EvaluationDataLoader.GroupOf(Fraud.Domain.Control.ControlGroup.G4b));
+        Assert.Equal(SubjectGroup.ControlCryptoActive, EvaluationDataLoader.GroupOf(Fraud.Domain.Control.ControlGroup.CryptoActive));
+        Assert.Equal(Subgroup.FrameTermConditioned, EvaluationDataLoader.FrameOf(Fraud.Domain.Control.SamplingFrame.K));
+        Assert.Equal(Subgroup.None, EvaluationDataLoader.FrameOf(null));
     }
 
     private RepoContext TempRepo()

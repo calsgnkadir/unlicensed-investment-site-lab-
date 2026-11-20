@@ -188,7 +188,7 @@ public sealed class ControlAttackTests
 
     // ---- Açık bulgular ----
 
-    [Fact(Skip = "açık: C1 G2 önkoşul denemesi ve seçim tohumu komut satırındaki --tranco-id'ye bağlı; deneme geçmezse başka bir günün listesiyle yeniden denenebilir")]
+    [Fact]
     public void G2_trial_and_seed_cannot_be_rerolled_with_another_tranco_list()
     {
         // Bulgu C1: Deneme kaydı "g2-onkosul-<listId>.json"; yalnızca AYNI liste kimliğini engelliyor. Tranco her gün yeni bir
@@ -201,7 +201,7 @@ public sealed class ControlAttackTests
         Assert.DoesNotContain("\"g2-onkosul-\" + listId", code, StringComparison.Ordinal);
     }
 
-    [Fact(Skip = "açık: C2 önkoşul denemelerinin kaydı sonuç görüldükten sonra yazılıyor; yarıda kesip ya da hata ürettirip yeniden denenebilir")]
+    [Fact]
     public void Trials_are_recorded_before_the_first_query()
     {
         // Bulgu C2: G3a denemesi her denemenin sonucunu ("Deneme 1: TooFew ...") hemen basıyor, kayıt dosyasını ise üç denemeden
