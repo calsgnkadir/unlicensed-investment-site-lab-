@@ -530,6 +530,147 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Fraud.Domain.Control.ControlBuild", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("BuiltAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("built_at");
+
+                    b.Property<string>("CommitmentId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("commitment_id");
+
+                    b.Property<string>("Counts")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("counts");
+
+                    b.Property<string>("Group")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("group");
+
+                    b.Property<string>("Seed")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("seed");
+
+                    b.Property<int>("Selected")
+                        .HasColumnType("integer")
+                        .HasColumnName("selected");
+
+                    b.Property<string>("SourceListId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("source_list_id");
+
+                    b.Property<string>("WeekKey")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("week_key");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Group", "WeekKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_control_builds_group_week");
+
+                    b.ToTable("control_builds", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_control_builds_selected", "selected >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Fraud.Domain.Control.ControlMember", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at");
+
+                    b.Property<string>("CommitmentId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("commitment_id");
+
+                    b.Property<string>("DictionarySubset")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("dictionary_subset");
+
+                    b.Property<long>("DomainId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("domain_id");
+
+                    b.Property<DateTimeOffset?>("FirstCertificateAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_certificate_at");
+
+                    b.Property<DateTimeOffset?>("FirstLoggedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_logged_at");
+
+                    b.Property<string>("Frame")
+                        .HasMaxLength(1)
+                        .HasColumnType("character varying(1)")
+                        .HasColumnName("frame");
+
+                    b.Property<string>("Group")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("group");
+
+                    b.Property<string>("Seed")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("seed");
+
+                    b.Property<string>("SourceListId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("source_list_id");
+
+                    b.Property<string>("Week")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("week");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DomainId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_control_members_domain");
+
+                    b.HasIndex("Group", "Week")
+                        .HasDatabaseName("ix_control_members_group_week");
+
+                    b.ToTable("control_members", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_control_members_frame", "frame IS NULL OR \"group\" IN ('G3', 'G4b')");
+
+                            t.HasCheckConstraint("ck_control_members_seed", "length(btrim(seed)) > 0");
+                        });
+                });
+
             modelBuilder.Entity("Fraud.Domain.DomainNames.DomainName", b =>
                 {
                     b.Property<long>("Id")
@@ -956,6 +1097,18 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DomainId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_collection_log_domains");
+
+                    b.Navigation("Domain");
+                });
+
+            modelBuilder.Entity("Fraud.Domain.Control.ControlMember", b =>
+                {
+                    b.HasOne("Fraud.Domain.DomainNames.DomainName", "Domain")
+                        .WithMany()
+                        .HasForeignKey("DomainId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_control_members_domains");
 
                     b.Navigation("Domain");
                 });

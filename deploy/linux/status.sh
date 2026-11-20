@@ -238,6 +238,29 @@ SQL
 echo "(Oran ~%1, kelimeye bakılmadan. Tablo boşsa: ct-follow tuzsuz başlamış olamaz; migration veya akışı kontrol edin.)"
 
 echo
+echo "== Kontrol grupları (control_members / control_builds, yalnızca sayı) =="
+psql_run <<'SQL'
+SELECT "group"                                   AS grup,
+       count(*)                                  AS uye,
+       count(*) FILTER (WHERE frame = 'K')       AS cerceve_k,
+       count(*) FILTER (WHERE frame = 'N')       AS cerceve_n,
+       count(DISTINCT week)                      AS hafta
+FROM control_members
+GROUP BY "group"
+ORDER BY "group";
+SQL
+psql_run <<'SQL'
+SELECT cm."group"                                                            AS grup,
+       cl.source                                                             AS kaynak,
+       count(DISTINCT cm.domain_id) FILTER (WHERE cl.outcome IN ('Success', 'Empty')) AS toplanan,
+       count(*) FILTER (WHERE cl.outcome = 'Error')                          AS hatali_istek
+FROM control_members cm
+JOIN collection_log cl ON cl.domain_id = cm.domain_id
+GROUP BY cm."group", cl.source
+ORDER BY cm."group", cl.source;
+SQL
+
+echo
 echo "== Son 24 saatte hata türleri =="
 psql_run <<'SQL'
 SELECT ct_log_name AS log, error_kind AS hata_turu, count(*) AS adet

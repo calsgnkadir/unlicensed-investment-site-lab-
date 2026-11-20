@@ -86,7 +86,8 @@ public sealed class PacingAndRetryTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["CrtSh:MinRequestInterval"] = "00:00:00",
+                // En kısa izinli aralık; tek istek olduğu için test beklemez.
+                ["CrtSh:MinRequestInterval"] = "00:00:12",
                 ["CrtSh:RetryBaseDelay"] = "00:00:00",
             })
             .Build();
@@ -110,6 +111,19 @@ public sealed class PacingAndRetryTests
         Assert.DoesNotContain('@', userAgent);
         Assert.Contains("application/json", fake.Accepts[0], StringComparison.Ordinal);
         Assert.Equal("crt.sh", fake.Requests[0].Host);
+    }
+
+    [Theory]
+    [InlineData("00:00:05")]
+    [InlineData("00:00:11.900")]
+    public void CrtSh_interval_below_twelve_seconds_is_refused(string interval)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["CrtSh:MinRequestInterval"] = interval })
+            .Build();
+
+        Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddCollectors(configuration));
+        Assert.Equal(TimeSpan.FromSeconds(15), new CrtShOptions().MinRequestInterval);
     }
 
     [Fact]

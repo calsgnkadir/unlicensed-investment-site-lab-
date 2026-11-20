@@ -17,6 +17,9 @@ public sealed class FakeHttpHandler : HttpMessageHandler
 
     public List<string> Accepts { get; } = [];
 
+    /// <summary>Authorization başlıkları (token'ın yalnızca burada taşındığını denetlemek için).</summary>
+    public List<string> Authorizations { get; } = [];
+
     /// <summary>Her isteğin HTTP sürümü ve sürüm politikası.</summary>
     public List<(Version Version, HttpVersionPolicy Policy)> Versions { get; } = [];
 
@@ -63,6 +66,10 @@ public sealed class FakeHttpHandler : HttpMessageHandler
         Requests.Add(request.RequestUri!);
         UserAgents.Add(request.Headers.UserAgent.ToString());
         Accepts.Add(request.Headers.Accept.ToString());
+        if (request.Headers.Authorization is { } auth)
+        {
+            Authorizations.Add(auth.ToString());
+        }
         Versions.Add((request.Version, request.VersionPolicy));
         if (_responses.Count == 0)
         {

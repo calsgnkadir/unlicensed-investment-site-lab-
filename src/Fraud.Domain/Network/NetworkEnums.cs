@@ -88,4 +88,7 @@ public enum DomainSet
 {
     /// <summary>official_actions tablosundaki alan adları (SPK ve USOM listeleri).</summary>
     OfficialActions = 1,
+
+    /// <summary>control_members tablosundaki kontrol grubu üyeleri. Adları hiçbir çıktıya yazılmaz (Kural 4).</summary>
+    ControlMembers = 2,
 }

@@ -30,6 +30,10 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
 
     public DbSet<CtNeutralSample> CtNeutralSamples => Set<CtNeutralSample>();
 
+    public DbSet<Fraud.Domain.Control.ControlMember> ControlMembers => Set<Fraud.Domain.Control.ControlMember>();
+
+    public DbSet<Fraud.Domain.Control.ControlBuild> ControlBuilds => Set<Fraud.Domain.Control.ControlBuild>();
+
     public DbSet<DnsSnapshot> DnsSnapshots => Set<DnsSnapshot>();
 
     public DbSet<IpAsnSnapshot> IpAsnSnapshots => Set<IpAsnSnapshot>();
@@ -93,6 +97,61 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
         ConfigureArchiveSnapshots(modelBuilder);
         ConfigureCertificateTransparency(modelBuilder);
         ConfigureNetwork(modelBuilder);
+        ConfigureControl(modelBuilder);
+    }
+
+    private static void ConfigureControl(ModelBuilder modelBuilder)
+    {
+        // Kontrol grubu üyeleri. Listede olmayan adlara bağlıdır (Kural 4): Dışarıya yalnızca grup başına sayı çıkar.
+        modelBuilder.Entity<Fraud.Domain.Control.ControlMember>(e =>
+        {
+            e.ToTable("control_members", t =>
+            {
+                t.HasCheckConstraint("ck_control_members_frame", "frame IS NULL OR \"group\" IN ('G3', 'G4b')");
+                t.HasCheckConstraint("ck_control_members_seed", "length(btrim(seed)) > 0");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.DomainId).HasColumnName("domain_id").IsRequired();
+            e.Property(x => x.Group).HasColumnName("group").HasConversion<string>().HasMaxLength(16).IsRequired();
+            e.Property(x => x.Frame).HasColumnName("frame").HasConversion<string>().HasMaxLength(1);
+            e.Property(x => x.AssignedAt).HasColumnName("assigned_at").IsRequired();
+            e.Property(x => x.Week).HasColumnName("week").HasMaxLength(8);
+            e.Property(x => x.Seed).HasColumnName("seed").HasMaxLength(128).IsRequired();
+            e.Property(x => x.SourceListId).HasColumnName("source_list_id").HasMaxLength(64);
+            e.Property(x => x.CommitmentId).HasColumnName("commitment_id").HasMaxLength(64);
+            e.Property(x => x.FirstLoggedAt).HasColumnName("first_logged_at");
+            e.Property(x => x.FirstCertificateAt).HasColumnName("first_certificate_at");
+            e.Property(x => x.DictionarySubset).HasColumnName("dictionary_subset").HasMaxLength(16);
+
+            e.HasOne(x => x.Domain)
+                .WithMany()
+                .HasForeignKey(x => x.DomainId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_control_members_domains");
+
+            // Bir alan adı yalnızca bir grupta: Öncelik kuralı (E02) veritabanında da korunur.
+            e.HasIndex(x => x.DomainId).IsUnique().HasDatabaseName("ux_control_members_domain");
+            e.HasIndex(x => new { x.Group, x.Week }).HasDatabaseName("ix_control_members_group_week");
+        });
+
+        modelBuilder.Entity<Fraud.Domain.Control.ControlBuild>(e =>
+        {
+            e.ToTable("control_builds", t => t.HasCheckConstraint("ck_control_builds_selected", "selected >= 0"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
+            e.Property(x => x.Group).HasColumnName("group").HasConversion<string>().HasMaxLength(16).IsRequired();
+            e.Property(x => x.WeekKey).HasColumnName("week_key").HasMaxLength(8).IsRequired();
+            e.Property(x => x.BuiltAt).HasColumnName("built_at").IsRequired();
+            e.Property(x => x.Seed).HasColumnName("seed").HasMaxLength(128).IsRequired();
+            e.Property(x => x.SourceListId).HasColumnName("source_list_id").HasMaxLength(64);
+            e.Property(x => x.CommitmentId).HasColumnName("commitment_id").HasMaxLength(64);
+            e.Property(x => x.Selected).HasColumnName("selected").IsRequired();
+            e.Property(x => x.Counts).HasColumnName("counts").HasColumnType("jsonb").IsRequired();
+
+            // Aynı hafta ya da aynı tek seferlik grup ikinci kez kurulamaz (idempotentlik).
+            e.HasIndex(x => new { x.Group, x.WeekKey }).IsUnique().HasDatabaseName("ux_control_builds_group_week");
+        });
     }
 
     private static void ConfigureCollectionLog(ModelBuilder modelBuilder)

@@ -16,8 +16,22 @@ public sealed class CollectionOptions
     /// </summary>
     public string UserAgent { get; set; } = "FraudLab/0.1 (passive research)";
 
+    /// <summary>
+    /// Kontrol üyelerinin haftalık DNS günleri (Türkiye saatiyle), iki ardışık gün. Üyeler bu iki güne tuzlu özetin tekliğine
+    /// göre karışık bölünür (Değişiklik kaydı 2026-11-20, madde 4). Boşsa cumartesi ve pazar.
+    /// </summary>
+    public IList<DayOfWeek> ControlDnsDays { get; } = [];
+
+    public IReadOnlyList<DayOfWeek> EffectiveControlDnsDays =>
+        ControlDnsDays.Count == 2 ? [.. ControlDnsDays] : [DayOfWeek.Saturday, DayOfWeek.Sunday];
+
     public void Validate()
     {
+        if (ControlDnsDays.Count is not (0 or 2) || (ControlDnsDays.Count == 2 && ControlDnsDays[0] == ControlDnsDays[1]))
+        {
+            throw new InvalidOperationException("Collection:ControlDnsDays iki farklı gün olmalı.");
+        }
+
         if (string.IsNullOrWhiteSpace(MeasurementLocation) || MeasurementLocation.Length > 64)
         {
             throw new InvalidOperationException("Collection:MeasurementLocation boş olamaz (en fazla 64 karakter).");

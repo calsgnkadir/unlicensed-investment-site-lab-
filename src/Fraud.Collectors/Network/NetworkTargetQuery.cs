@@ -13,8 +13,8 @@ namespace Fraud.Collectors.Network;
 /// </summary>
 /// <remarks>
 /// Kural 2: DNS yalnızca listedeki, aday ve kontrol grubundaki adlar için sorulur; InternetDB'ye yalnızca SPK/USOM
-/// listesi ve kontrol grubunun IP'leri gider. Bugün yalnızca <see cref="DomainSet.OfficialActions"/> var.
-/// Yeni grup eklenince yalnızca bu sınıf değişir; toplayıcılar grubu buradan alır.
+/// listesi ve kontrol grubunun IP'leri gider. Gruplar: <see cref="DomainSet.OfficialActions"/> (pozitifler) ve
+/// <see cref="DomainSet.ControlMembers"/> (kontrol üyeleri). Toplayıcılar grubu buradan alır.
 /// </remarks>
 public static class NetworkTargetQuery
 {
@@ -22,6 +22,16 @@ public static class NetworkTargetQuery
     public static async Task<List<CollectionTarget>> DomainsAsync(FraudDbContext db, DomainSet set, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(db);
+        if (set == DomainSet.ControlMembers)
+        {
+            var members = await db.ControlMembers
+                .Select(m => new { m.DomainId, m.Domain.Host })
+                .OrderBy(t => t.DomainId)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return members.Select(r => new CollectionTarget(r.DomainId, r.Host)).ToList();
+        }
+
         if (set != DomainSet.OfficialActions)
         {
             throw new NotSupportedException(set + " grubu henüz tanımlı değil.");
@@ -50,7 +60,7 @@ public static class NetworkTargetQuery
     {
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(isAllowed);
-        if (set != DomainSet.OfficialActions)
+        if (set is not (DomainSet.OfficialActions or DomainSet.ControlMembers))
         {
             throw new NotSupportedException(set + " grubu henüz tanımlı değil.");
         }
@@ -63,7 +73,9 @@ public static class NetworkTargetQuery
                         && !s.BlockMarker
                         && s.QueriedAt >= since
                         && (s.QueryType == a || s.QueryType == aaaa)
-                        && db.OfficialActions.Any(o => o.DomainId == s.DomainId))
+                        && (set == DomainSet.OfficialActions
+                            ? db.OfficialActions.Any(o => o.DomainId == s.DomainId)
+                            : db.ControlMembers.Any(m => m.DomainId == s.DomainId)))
             .Select(s => s.Answers)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

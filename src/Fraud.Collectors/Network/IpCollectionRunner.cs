@@ -54,9 +54,14 @@ public sealed class IpCollectionRunner(
             ?? throw new InvalidOperationException($"{source} için IP toplayıcısı kayıtlı değil.");
 
         var now = timeProvider.GetUtcNow();
-        var ips = await NetworkTargetQuery
+        // Pozitiflerin ve kontrol üyelerinin IP'leri (Kural 2: InternetDB'ye yalnızca resmi liste ve kontrol grubu IP'leri).
+        var positiveIps = await NetworkTargetQuery
             .ResolvedIpsAsync(db, DomainSet.OfficialActions, now - collector.DnsLookback, filter.IsAllowed, cancellationToken)
             .ConfigureAwait(false);
+        var controlIps = await NetworkTargetQuery
+            .ResolvedIpsAsync(db, DomainSet.ControlMembers, now - collector.DnsLookback, filter.IsAllowed, cancellationToken)
+            .ConfigureAwait(false);
+        var ips = positiveIps.Concat(controlIps).Distinct().ToList();
         var fresh = force
             ? []
             : await collector.RecentlyAnsweredAsync(db, now - collector.CacheTtl, cancellationToken).ConfigureAwait(false);
@@ -175,12 +180,8 @@ public sealed class CollectionDispatcher(
 
     private async Task<CollectionRunSummary> RunCoreAsync(CollectionSource source, bool force, CancellationToken cancellationToken)
     {
-        if (source is CollectionSource.CrtSh or CollectionSource.WaybackCdx)
-        {
-            return await domainRunner.RunAsync(source, force, cancellationToken).ConfigureAwait(false);
-        }
-
-        if (source is not (CollectionSource.Dns or CollectionSource.RipeStat or CollectionSource.InternetDb))
+        if (source is not (CollectionSource.Dns or CollectionSource.RipeStat or CollectionSource.InternetDb
+            or CollectionSource.CrtSh or CollectionSource.WaybackCdx))
         {
             throw new InvalidOperationException(source + " worker ile çalıştırılamaz (ct-follow ayrı bir komuttur).");
         }
@@ -195,6 +196,13 @@ public sealed class CollectionDispatcher(
         await using (held.ConfigureAwait(false))
         {
             // Kilit tur boyunca her hedeften önce yeniden denetlenir (bağlantı koparsa kilit gider).
+            // crt.sh ve Wayback de kilitli: network servisi bunları da topladığı için elle başlatılan ikinci bir süreç
+            // crt.sh'e dakikada 5 istek sınırının üstünde istek gönderirdi.
+            if (source is CollectionSource.CrtSh or CollectionSource.WaybackCdx)
+            {
+                return await domainRunner.RunAsync(source, force, held, cancellationToken).ConfigureAwait(false);
+            }
+
             if (source != CollectionSource.Dns)
             {
                 return await ipRunner.RunAsync(source, force, held, cancellationToken).ConfigureAwait(false);

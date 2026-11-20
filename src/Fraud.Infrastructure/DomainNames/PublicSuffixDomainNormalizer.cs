@@ -52,6 +52,32 @@ public sealed class PublicSuffixDomainNormalizer : IDomainNameNormalizer
         _parser = new DomainParser(provider);
     }
 
+    /// <summary>Gömülü listenin özel bölümünün başladığı işaret.</summary>
+    public const string PrivateSectionMarker = "===BEGIN PRIVATE DOMAINS===";
+
+    /// <summary>Gömülü listenin ICANN bölümünün başladığı işaret.</summary>
+    public const string IcannSectionMarker = "===BEGIN ICANN DOMAINS===";
+
+    /// <summary>
+    /// Yalnızca ICANN bölümüyle çalışan normalleştirici (kontrol grubu E06 elemesi için). Liste özel bölüm işaretinde
+    /// kesilir. İki işaretten biri yoksa istisna verir: Liste biçimi değişmiş olabilir, sessizce yanlış ayırmayalım.
+    /// </summary>
+    /// <remarks>
+    /// Kullanım: Bir ad hem tam listeyle hem bununla indirgenir. Kayıtlı alan adları farklıysa ad özel bölümdeki bir
+    /// soneğin altındadır (ör. ortak barındırma alt alanı) ve kontrol grubuna girmez (KONTROL_GRUBU_YONTEMI.md 1.1).
+    /// </remarks>
+    public static PublicSuffixDomainNormalizer IcannOnly()
+    {
+        var text = LoadEmbeddedList();
+        var privateStart = text.IndexOf(PrivateSectionMarker, StringComparison.Ordinal);
+        if (privateStart < 0 || !text.Contains(IcannSectionMarker, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Public Suffix List bölüm işaretleri bulunamadı; E06 elemesi yapılamaz.");
+        }
+
+        return new PublicSuffixDomainNormalizer(text[..privateStart]);
+    }
+
     public DomainNormalizationResult Normalize(string? input)
     {
         if (string.IsNullOrWhiteSpace(input))

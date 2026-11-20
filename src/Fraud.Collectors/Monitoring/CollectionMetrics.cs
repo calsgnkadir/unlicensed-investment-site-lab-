@@ -39,6 +39,7 @@ public sealed class CollectionMetrics : IDisposable
     private readonly Counter<long> _newItems;
     private readonly Counter<long> _errors;
     private readonly Counter<long> _retries;
+    private readonly Counter<long> _groupTargets;
 
     public CollectionMetrics(IMeterFactory? meterFactory = null, TimeProvider? timeProvider = null)
     {
@@ -50,6 +51,8 @@ public sealed class CollectionMetrics : IDisposable
         _targets = _meter.CreateCounter<long>("fraud_collection_targets", null,
             "Turda işlenen hedef (alan adı veya IP) sonuca göre; SkippedFresh = önbellekte taze, sorulmadı");
         _newItems = _meter.CreateCounter<long>("fraud_collection_new_items", null, "İlk kez yazılan kayıt");
+        _groupTargets = _meter.CreateCounter<long>("fraud_collection_group_targets", null,
+            "Turun hedefleri gruba göre (positive = resmi liste, control = kontrol üyeleri). Yalnızca sayı; alan adı etikete girmez.");
         _errors = _meter.CreateCounter<long>("fraud_collection_errors", null, "Hata alan hedef (hata türüne göre)");
         _retries = _meter.CreateCounter<long>("fraud_collection_retries", null,
             "Tekrar deneme: HTTP kaynaklarında ilk istekten sonraki istekler, DNS'te ilk paketten sonraki paketler");
@@ -89,6 +92,8 @@ public sealed class CollectionMetrics : IDisposable
         Add(_targets, summary.Failed, source, MetricLabels.Tag("outcome", nameof(CollectionOutcome.Error)));
         Add(_targets, summary.SkippedFresh, source, MetricLabels.Tag("outcome", "SkippedFresh"));
         Add(_newItems, summary.NewItems, source);
+        Add(_groupTargets, summary.PositiveTargets, source, MetricLabels.Tag("group", "positive"));
+        Add(_groupTargets, summary.ControlTargets, source, MetricLabels.Tag("group", "control"));
     }
 
     /// <summary>Tur istisnayla bitti.</summary>

@@ -21,6 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Kontrol listesi ayrıştırıcıları için sabit, uydurma örnek dosyalar (.example adları; ağ yok). -->
+    <None Include="Control/Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

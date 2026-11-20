@@ -28,6 +28,7 @@ public static class CollectorServiceCollectionExtensions
         var collection = Bind<CollectionOptions>(configuration, CollectionOptions.SectionName);
         collection.Validate();
         var crtSh = Bind<CrtShOptions>(configuration, CrtShOptions.SectionName);
+        crtSh.Validate();
         var wayback = Bind<WaybackCdxOptions>(configuration, WaybackCdxOptions.SectionName);
         var worker = Bind<WorkerOptions>(configuration, WorkerOptions.SectionName);
 

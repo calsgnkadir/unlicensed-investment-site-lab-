@@ -1,10 +1,10 @@
 # Tehdit Modeli
 
-Tarih: 12 Kasım 2026, `00c09c7` sonrasına göre güncellendi. 13 Kasım 2026: Hafta 4 ağ kodu (DNS, RIPEstat, InternetDB; commit edilmemiş çalışma kopyası) denetlendi, Bölüm 3.4 ve 5.1. Aynı gün: Hafta 5 izleme kodu (Prometheus, Grafana, port denetimi; commit edilmemiş çalışma kopyası) denetlendi, Bölüm 3.12 ve 5.2. 15 Kasım 2026: Hafta 6 ölçüm, taahhüt ve tarafsız örneklem kodu denetlendi, Bölüm 3.13 ve 5.3. Kapsam: Hafta 1-6 kodu (`src/`, `docker-compose.yml`, `deploy/linux`, `deploy/dev`, Dockerfile'lar, CI). Panel henüz yok; onunla ilgili maddeler "gelecek risk" olarak işaretlendi.
+Tarih: 12 Kasım 2026, `00c09c7` sonrasına göre güncellendi. 13 Kasım 2026: Hafta 4 ağ kodu (DNS, RIPEstat, InternetDB; commit edilmemiş çalışma kopyası) denetlendi, Bölüm 3.4 ve 5.1. Aynı gün: Hafta 5 izleme kodu (Prometheus, Grafana, port denetimi; commit edilmemiş çalışma kopyası) denetlendi, Bölüm 3.12 ve 5.2. 15 Kasım 2026: Hafta 6 ölçüm, taahhüt ve tarafsız örneklem kodu denetlendi, Bölüm 3.13 ve 5.3. 20 Kasım 2026: Hafta 7 kontrol grubu altyapısı denetlendi, Bölüm 3.14 ve 5.4. Kapsam: Hafta 1-7 kodu (`src/`, `docker-compose.yml`, `deploy/linux`, `deploy/dev`, Dockerfile'lar, CI). Panel henüz yok; onunla ilgili maddeler "gelecek risk" olarak işaretlendi.
 
 Bu belge her yeni dış kaynak, yeni uç veya yayına alma öncesinde güncellenir. Testler: `tests/Fraud.Security.Tests`. Açık bulgular orada `Skip = "açık: ..."` ile görünür durur.
 
-**Durum:** Hafta 1-2 denetiminin 11 bulgusu `00c09c7` commit'inde kapatıldı (Bölüm 5). Hafta 4 ağ kodunun 9 bulgusu (N1-N9) ve Hafta 5 izleme kodunun 6 bulgusu (M1-M6) kapatıldı (Bölüm 5.1, 5.2). Hafta 6 ölçüm ve taahhüt kodunun 13 bulgusu (E1-E13) kapatıldı (E1-E10 `bb88fc5`, E11-E12 `2c1877a`, E13 commit edilmemiş çalışma kopyasında; Bölüm 5.3). Güvenlik testlerinde `Skip` kalmadı. 20 Kasım 2026 çalıştırması (Docker açık): `dotnet test tests/Fraud.Security.Tests` 593 başarılı, 0 atlanan, 0 başarısız (toplam 593); `dotnet test tests/Fraud.Integration.Tests` 566 başarılı, 0 atlanan, 0 başarısız (toplam 566); `dotnet test tests/Fraud.Evaluation.Tests` 73 başarılı, 0 atlanan, 0 başarısız (toplam 73). Kalan açık riskler Bölüm 6'da bir arada.
+**Durum:** Hafta 1-2 denetiminin 11 bulgusu `00c09c7` commit'inde kapatıldı (Bölüm 5). Hafta 4 ağ kodunun 9 bulgusu (N1-N9), Hafta 5 izleme kodunun 6 bulgusu (M1-M6) ve Hafta 6 ölçüm ve taahhüt kodunun 13 bulgusu (E1-E13) kapatıldı (Bölüm 5.1-5.3). Hafta 7 kontrol grubu denetiminde 2 bulgu açıldı (C1, C2, Bölüm 5.4); testleri `Skip = "açık: ..."` ile duruyor. 20 Kasım 2026 çalıştırması (Docker açık): `dotnet test tests/Fraud.Security.Tests` 626 başarılı, 2 atlanan, 0 başarısız (toplam 628); `dotnet test tests/Fraud.Integration.Tests` 590 başarılı, 0 atlanan, 0 başarısız (toplam 590); `dotnet test tests/Fraud.Evaluation.Tests` 73 başarılı, 0 atlanan, 0 başarısız (toplam 73). Kalan açık riskler Bölüm 6'da bir arada.
 
 ## 1. Varlıklar
 
@@ -266,6 +266,23 @@ Kapsam: Tarafsız CT örneklemi (`85f1c05`: `NeutralSampler`, `ct_neutral_sample
 - Windows'ta `C:\dev` altındaki `data/private` dosyaları `Authenticated Users: Modify` iznini devralır (M5'teki durum). Makinedeki başka yerel hesaplar gizli listeyi, açıklama dosyasını ve anahtarı okuyabilir. Bu klasörün mirası kaldırılmalı (`icacls data\private /inheritance:r ...`) ya da gizli veri `~/fraud-lab` (WSL ext4) altında tutulmalı.
 - Kilit dosyası yereldir. Dosyayı silen biri kilitli testi yeniden "ilk kez" çalıştırabilir; bunu yerel kod tek başına engelleyemez. Çözüm dış bir çapadır: Çalıştırmadan önce kilit kaydının özeti açık bir dosyaya yazılıp commit edilir ve RFC 3161 ile zaman damgalanır; rapora kilit kaydının özeti yazılır.
 
+### 3.14 Kontrol grubu altyapısı (Hafta 7)
+
+Kapsam: `src/Fraud.Collectors/Control/` (ControlSelection, FinanceLexicon, ControlSourceParsers, ControlSourceClients, ControlStore, ControlCommands, G3aTrial, ControlCommandLine), `control_members` ve `control_builds` migration'ı, `CollectionRunner` kontrol hedefleri ve DNS gün bölmesi, `CrtShOptions` (15 sn, alt sınır 12 sn), crt.sh/Wayback kaynak kilidi, `PublicSuffixDomainNormalizer.IcannOnly`, `MetricLabels` `group` etiketi, `deploy/linux`. Denetim 20 Kasım 2026, commit edilmemiş çalışma kopyası.
+
+**Senaryolar:** Cloudflare Radar token'ı konsola, loga, istisnaya, metriğe ya da yönlendirmeyle başka bir host'a sızar. Kontrol listesi kaynakları (BDDK HTML, Tranco CSV/ZIP, Radar JSON) saldırgan girdiyle süreci durdurur, belleği şişirir ya da iç adrese bağlantı kurdurur. Listede olmayan kontrol adları dışarı çıkar (Kural 4, 8). Seçim, sonuca bakılarak "tutana kadar" tekrarlanır (Kural 7).
+
+**Gerçek tasarım (kodda doğrulandı):**
+- *Token:* Yalnızca `deploy/linux/secrets/cloudflare_radar_token` dosyasından (ya da `--token-file`) okunur, 4 KB sınırı, boşluk içeren değer reddedilir. Yalnızca `Authorization: Bearer` başlığında, yalnızca `api.cloudflare.com`'a gider. İstemci elle kurulur (HttpClientFactory log işleyicisi yok), `AllowedHostConnector` (izin listesi, bağlantı anında IP denetimi, vekil yok, yönlendirme yok). Yönlendirme cevabında ikinci istek atılmaz (testle). Token hiçbir çıktıya yazılmaz; hata mesajı yalnızca dosya yolunu söyler. `deploy/linux/secrets/` git dışı.
+- *İzin listesi:* BDDK (`www.bddk.org.tr`), Tranco (`tranco-list.eu`), Radar (`api.cloudflare.com`) ve G3a crt.sh istemcileri her biri tek host'luk `AllowedHostConnector` kullanır. BDDK'dan çıkan banka adresleri hiçbir zaman istenmez; yalnızca normalleştirilip ad olarak saklanır (Kural 2).
+- *Girdi:* BDDK HTML 4 MB sınırı, regex zaman aşımı 2 sn; `javascript:`, `data:`, `file:`, göreli ve BDDK içi bağlantılar düşer; kullanıcı bilgili ve IP'li adresler normalleştiricide reddedilir. Tranco ZIP yalnızca belleğe okunur (giriş adı yol olarak kullanılmaz); bildirilen açılmış boyut sınırın üstündeyse ret, boyutu yalan söyleyen bomba .NET tarafından durdurulur (testle). Radar JSON katı; Radar ad yolu `IsDnsName` ile denetlenir (yol, sorgu, `@` giremez).
+- *Kural 4 ve 8:* Komutlar yalnızca sayı basar; listeler `data/private/control` altında (`**/data/private/` git dışı), taahhüt açık dosyası yalnızca kök ve sayı. Metrik etiketi `group` yalnızca `positive`/`control`.
+- *Bütünlük:* Haftalık kurma (`G3`, `G4b`) hafta bitmeden reddediliyor, aynı hafta ikinci kez kurulamıyor (`control_builds`), tohum haftadan türüyor (komut satırından verilemez). Tek seferlik gruplar (`G1`, `G2`, `G4a`) kurulduktan sonra tekrar kurulamıyor. Sözlük SHA-256'sı kodda sabit; dosya değişirse G3 kurulmuyor. crt.sh komutları crt.sh kaynak kilidini alıyor; aralık en az 12 sn.
+
+**Testler:** `tests/Fraud.Security.Tests/Control/ControlAttackTests.cs`; ayrıca `tests/Fraud.Integration.Tests/Control`.
+
+**Açık bulgular:** C1, C2 (Bölüm 5.4).
+
 ## 4. Bilinçli olarak kapsam dışı
 
 - Hedef sitelere doğrudan bağlantı, port taraması, TLS el sıkışması (Kural 2). Bu yüzden ilgili saldırı yüzeyi de yok.
@@ -405,9 +422,23 @@ Denetlenip sorun bulunmayanlar:
 - **Kilit:** aynı dosyada ikinci çalıştırmanın reddi ve gerekçeli yeniden çalıştırma; 16 eşzamanlı ilk çalıştırmada tek bilet; `Locked` kipin biletsiz çalışmaması.
 - **Sinyal ve yapılandırma:** görünümde yalnızca birimin kendi önceki gözlemleri olması; yapılandırmada aralık dışı değerlerin reddi.
 
+### 5.4 Hafta 7 kontrol grubu denetimi (20 Kasım 2026, commit edilmemiş çalışma kopyası)
+
+Her testin `Skip`'i kaldırılarak kırmızı olduğu görüldü, sonra `Skip = "açık: ..."` eklendi. Token, SSRF, girdi ve Kural 4/8 tarafında bulgu yok.
+
+| # | Önem | Durum | Yer | Özet ve saldırı senaryosu | Önerilen düzeltme | Test |
+|---|---|---|---|---|---|---|
+| C1 | Orta | Açık | `ControlCommands.BuildG2Async` (`g2-onkosul-<listId>.json`, `ControlSeeds.For("g2", listId)`) | G2 önkoşul denemesinin kaydı ve seçim tohumu komut satırındaki `--tranco-id`'ye bağlı. Kayıt yalnızca AYNI kimliği engelliyor. Tranco her gün yeni bir liste yayımladığı için deneme %80'in altında kalırsa ertesi günün kimliğiyle yeni bir deneme açılır; "%80 tutana kadar dene" mümkün. Yöntem belgesi "liste tek bir tarihe sabitlenir" diyor, ama kod hangi kimliğin sabitlendiğini bilmiyor | Liste kimliği ve tarihi seçimden ÖNCE commit edilmiş bir dosyada sabitlensin, komut yalnızca onu kabul etsin. Deneme kaydı listeden bağımsız tek bir dosya olsun | `G2_trial_and_seed_cannot_be_rerolled_with_another_tranco_list` |
+| C2 | Düşük | Açık | `G3aTrial.RunAsync`, `ControlCommands.BuildG2Async` | Önkoşul denemelerinin kaydı sonuç görüldükten sonra yazılıyor. G3a her denemenin sonucunu hemen basıyor, kaydı üç denemeden sonra yazıyor. İlk deneme kötü görünürse Ctrl+C kayıt bırakmaz; crt.sh cevapları (zaman aşımı, kesik) zamanla değiştiği için yeniden çalıştırma sonucu değiştirebilir. G2 denemesi hata varsa sayıları basıp kaydetmiyor; hata ürettirmek denemeyi silmenin yolu olur | Kayıt ilk sorgudan ÖNCE "başladı" olarak (`CreateNew`) yazılsın; yarıda kalan ya da hatalı deneme de "kullanıldı" sayılsın (kilitli test ile aynı kural) | `Trials_are_recorded_before_the_first_query` |
+
+Notlar (bulgu sayılmadı):
+- Tranco ZIP bombası: Bildirilen açılmış boyutu 1000 bayt olarak değiştirilmiş, gerçekte ~104 MB açılan bir giriş testte durduruldu (.NET `ZipArchive` bildirilen boyutu aşan okumayı reddediyor). `Unzip` bildirilen boyutu da sınırla karşılaştırıyor.
+- BDDK ayrıştırıcısında kapanmayan binlerce `<a>` regex'i 2 sn zaman aşımına düşürebilir; istisna komutu durdurur (kaynak TLS'li resmi site, etkisi kendi komutumuzun durması).
+- Seçimin önizlemesi: Tohum kuralı açık (`kontrol-<grup>-<anahtar>`). Kodu yerelde çalıştırıp farklı bir veritabanı kopyasında sonucu önceden görmek mümkün; bu "bilerek hile" sınıfıdır (Bölüm 3.13). C1 bundan ayrıdır: Resmi komutla, kayıt bırakarak ama yine de tekrar denenebiliyor.
+
 ## 6. Açık riskler
 
-Hafta 4 ağ kodunda N1-N9 kapatıldı (Bölüm 5.1). Hafta 5 izleme kodunda M1-M6 kapatıldı (Bölüm 5.2). Hafta 6 ölçüm ve taahhüt kodunda E1-E13 kapatıldı (Bölüm 5.3). Kodda bilinen açık bulgu yok. Aşağıdakiler ayrıca sertleştirme ve gelecek riskleridir; yayından (Hafta 11) önce kapatılmalı.
+Hafta 4 ağ kodunda N1-N9 kapatıldı (Bölüm 5.1). Hafta 5 izleme kodunda M1-M6 kapatıldı (Bölüm 5.2). Hafta 6 ölçüm ve taahhüt kodunda E1-E13 kapatıldı (Bölüm 5.3). Hafta 7 kontrol grubu kodunda 2 açık bulgu var (C1, C2, Bölüm 5.4); G2 kurulmadan önce C1, G3a denemesinden önce C2 kapatılmalı. Aşağıdakiler ayrıca sertleştirme ve gelecek riskleridir; yayından (Hafta 11) önce kapatılmalı.
 
 | Risk | Neden önemli | Öneri | Bölüm |
 |---|---|---|---|

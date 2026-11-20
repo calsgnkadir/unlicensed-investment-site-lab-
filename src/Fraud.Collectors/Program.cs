@@ -1,5 +1,6 @@
 using Fraud.Collectors;
 using Fraud.Collectors.Collection;
+using Fraud.Collectors.Control;
 using Fraud.Collectors.Dns;
 using Fraud.Collectors.Evaluation;
 using Fraud.Collectors.Monitoring;
@@ -39,6 +40,14 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- port-audit-exporter                     (port-audit durum dosyasını sunar)
 //   dotnet run --project src/Fraud.Collectors -- eval-run --mode Historical|Locked --config <dosya> [--controls <csv>] [--clusters <csv>] [--commit <sha>]
 //   dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --config <dosya> --commitment <açık dosya> --opening <açıklama>
+//   dotnet run --project src/Fraud.Collectors -- control-fetch-g1                       (tek istek, yalnızca www.bddk.org.tr)
+//   dotnet run --project src/Fraud.Collectors -- control-build-g1 --input <kaydedilmiş BDDK HTML>
+//   dotnet run --project src/Fraud.Collectors -- control-build-g2 --tranco-id <kimlik> [--token-file <dosya>]
+//   dotnet run --project src/Fraud.Collectors -- control-build-g4a --tranco-id <kimlik>
+//   dotnet run --project src/Fraud.Collectors -- control-build-g3 --week yyyy-Www [--max-queries 600]
+//   dotnet run --project src/Fraud.Collectors -- control-build-g4b --week yyyy-Www [--max-queries 600]
+//   dotnet run --project src/Fraud.Collectors -- control-g3a-trial
+//   (Kontrol komutları yalnızca sayı basar; listeler data/private/control altına ve control_members tablosuna gider.)
 //   dotnet run --project src/Fraud.Collectors -- commit-create --records <dosya> --name <ad> --public-out <dosya> [--previous <dosya>]
 //   dotnet run --project src/Fraud.Collectors -- commit-prove --opening <dosya> --index <i>
 //   dotnet run --project src/Fraud.Collectors -- commit-verify --public <dosya> --proof <dosya> [--record <ad>] [--previous <dosya>]
@@ -53,13 +62,16 @@ const string Usage =
     "collect-internetdb [--force true] | dns-compare [--day YYYY-AA-GG] | worker | quality-report | ct-follow | migrate | " +
     "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true] | " +
     "archive-sample [--count N] [--seed <metin>] [--out <klasör>] | port-audit [--once true] | port-audit-exporter | " +
-    "eval-run --mode <kip> --config <dosya> | commit-create | commit-prove | commit-verify>";
+    "eval-run --mode <kip> --config <dosya> | commit-create | commit-prove | commit-verify | " +
+    "control-fetch-g1 | control-build-g1 | control-build-g2 | control-build-g3 | control-build-g4a | control-build-g4b | control-g3a-trial>";
 
 var command = args.Length > 0 ? args[0] : string.Empty;
 if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"
     or "ct-follow" or "ct-sample" or "migrate" or "archive-sample"
     or "collect-dns" or "collect-ripestat" or "collect-internetdb" or "dns-compare" or "port-audit" or "port-audit-exporter"
-    or "eval-run" or "commit-create" or "commit-prove" or "commit-verify"))
+    or "eval-run" or "commit-create" or "commit-prove" or "commit-verify"
+    or "control-fetch-g1" or "control-build-g1" or "control-build-g2" or "control-build-g3" or "control-build-g4a"
+    or "control-build-g4b" or "control-g3a-trial"))
 {
     await Console.Error.WriteLineAsync(Usage).ConfigureAwait(false);
     return 64;
@@ -269,6 +281,20 @@ switch (command)
             Console.Out,
             stop.Token,
             RepoContext.Find(gitPath: builder.Configuration["Git:Path"])).ConfigureAwait(false);
+    }
+
+    case "control-fetch-g1":
+    case "control-build-g1":
+    case "control-build-g2":
+    case "control-build-g3":
+    case "control-build-g4a":
+    case "control-build-g4b":
+    case "control-g3a-trial":
+    {
+        await using var scope = host.Services.CreateAsyncScope();
+        return await ControlCommandLine.RunAsync(
+            command, EvaluationCommands.ParseArgs(args.Skip(1).ToArray()), scope.ServiceProvider, builder.Configuration["Git:Path"], stop.Token)
+            .ConfigureAwait(false);
     }
 
     case "archive-sample":

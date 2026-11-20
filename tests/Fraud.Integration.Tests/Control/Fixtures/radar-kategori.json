@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "errors": [],
+  "result": {
+    "details_0": {
+      "bucket": "1000",
+      "categories": [
+        { "id": 3, "name": "Business & Economy", "superCategoryId": 0 },
+        { "id": 80, "name": "News & Media", "superCategoryId": 7 }
+      ],
+      "top_locations": []
+    },
+    "meta": { "dateRange": [] }
+  }
+}

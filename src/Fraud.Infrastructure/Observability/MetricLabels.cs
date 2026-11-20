@@ -55,6 +55,8 @@ public static partial class MetricLabels
         // Son DNS turunun sınıfları (bkz. DnsMetrics): cevap, NXDOMAIN, SERVFAIL, diğer hata.
         ["result"] = OneOf("answer", "nxdomain", "servfail", "error"),
         ["table"] = OneOf(FreshnessTables),
+        // Toplama hedefinin grubu: yalnızca iki sabit değer. Alt grup (G1..G4) bile etikete girmez.
+        ["group"] = OneOf("positive", "control"),
         ["fetch"] = OneOf("checkpoint", "data_tile", "hash_tile"),
         // Port denetimi: yalnızca kendi makinemiz. Port numarası etiket olabilir; adres ve süreç adı olamaz.
         ["protocol"] = OneOf("tcp", "udp"),

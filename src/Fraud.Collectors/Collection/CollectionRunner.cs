@@ -14,12 +14,24 @@ public sealed record CollectionRunSummary(
 {
     /// <summary>Aynı kaynağı başka bir süreç topluyordu; bu tur hiç sorgu atmadan çıktı.</summary>
     public bool LockedOut { get; init; }
+
+    /// <summary>Hedeflerin kaçı pozitif (official_actions). Yalnızca sayı.</summary>
+    public int PositiveTargets { get; init; }
+
+    /// <summary>Hedeflerin kaçı kontrol üyesi (bu tur için seçilenler). Yalnızca sayı; ad yok (Kural 4).</summary>
+    public int ControlTargets { get; init; }
 }
 
 /// <summary>
-/// Bir kaynak için bir toplama turu: official_actions içindeki alan adlarını sırayla sorgular.
+/// Bir kaynak için bir toplama turu: pozitifleri (official_actions) ve kontrol üyelerini (control_members) sırayla sorgular.
 /// </summary>
 /// <remarks>
+/// <para>Hedef kuralları (Değişiklik kaydı 2026-11-20):</para>
+/// <list type="bullet">
+/// <item>Pozitifler: Her kaynakta önceki gibi (<see cref="ISourceCollector.CacheTtl"/>; DNS günlük).</item>
+/// <item>Kontrol üyeleri, crt.sh ve Wayback: alan adı başına BİR KEZ (başarılı ya da kesin boş sonuç bir kez yeter).</item>
+/// <item>Kontrol üyeleri, DNS: haftalık; üye yalnızca kendi gününde sorulur (<see cref="Fraud.Collectors.Control.ControlDnsSchedule"/>).</item>
+/// </list>
 /// Önbellek: Bu kaynak bir alan adını <see cref="ISourceCollector.CacheTtl"/> içinde başarıyla ya da kesin boş
 /// sonuçla sorguladıysa o alan adı atlanır. Hata sonuçları önbelleğe girmez; sonraki turda yeniden denenir.
 /// İdempotentlik iki katmanlıdır: önbellek gereksiz isteği önler, tablolardaki tekil indeksler ise
@@ -49,12 +61,33 @@ public sealed class CollectionRunner(
         var collector = collectors.SingleOrDefault(c => c.Source == source)
             ?? throw new InvalidOperationException($"{source} için toplayıcı kayıtlı değil.");
 
-        // Bugün bütün alan adı kaynakları (crt.sh, Wayback, DNS) yalnızca resmi listedeki adlara sorulur.
-        var targets = await NetworkTargetQuery.DomainsAsync(db, DomainSet.OfficialActions, cancellationToken).ConfigureAwait(false);
+        var now = timeProvider.GetUtcNow();
+        var positives = await NetworkTargetQuery.DomainsAsync(db, DomainSet.OfficialActions, cancellationToken).ConfigureAwait(false);
+        var positiveIds = positives.Select(p => p.DomainId).ToHashSet();
+        var controls = (await NetworkTargetQuery.DomainsAsync(db, DomainSet.ControlMembers, cancellationToken).ConfigureAwait(false))
+            .Where(c => !positiveIds.Contains(c.DomainId))
+            .ToList();
+        if (source == CollectionSource.Dns)
+        {
+            // Kontrol DNS'i haftalık: Bugün Türkiye saatiyle bu üyenin günü değilse sorulmaz.
+            var today = DateOnly.FromDateTime(now.ToOffset(TimeSpan.FromHours(3)).DateTime);
+            controls = [.. controls.Where(c => Fraud.Collectors.Control.ControlDnsSchedule.IsDue(c.Host, today, options.EffectiveControlDnsDays))];
+        }
 
-        var fresh = force
-            ? []
-            : await FreshDomainIdsAsync(source, timeProvider.GetUtcNow() - collector.CacheTtl, cancellationToken).ConfigureAwait(false);
+        var targets = positives.Concat(controls).ToList();
+        var controlIds = controls.Select(c => c.DomainId).ToHashSet();
+
+        var fresh = new HashSet<long>();
+        if (!force)
+        {
+            fresh = await FreshDomainIdsAsync(source, now - collector.CacheTtl, cancellationToken).ConfigureAwait(false);
+            if (source != CollectionSource.Dns && controlIds.Count > 0)
+            {
+                // crt.sh ve Wayback: kontrol üyesi bir kez toplandıysa yeterli (geçmiş veri değişmez, istek boşa gitmesin).
+                var ever = await FreshDomainIdsAsync(source, DateTimeOffset.MinValue, cancellationToken).ConfigureAwait(false);
+                fresh.UnionWith(ever.Where(controlIds.Contains));
+            }
+        }
 
         CollectorLog.RunStarted(logger, source, targets.Count, fresh.Count);
 
@@ -131,7 +164,11 @@ public sealed class CollectionRunner(
         }
 
         CollectorLog.RunFinished(logger, source, succeeded, empty, failed, skipped, newItems);
-        return new CollectionRunSummary(source, targets.Count, skipped, succeeded, empty, failed, newItems, cancelled);
+        return new CollectionRunSummary(source, targets.Count, skipped, succeeded, empty, failed, newItems, cancelled)
+        {
+            PositiveTargets = positives.Count,
+            ControlTargets = controls.Count,
+        };
     }
 
     private async Task<HashSet<long>> FreshDomainIdsAsync(CollectionSource source, DateTimeOffset since, CancellationToken cancellationToken)

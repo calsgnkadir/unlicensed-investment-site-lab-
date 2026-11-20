@@ -109,6 +109,45 @@ Ayar değişince: `docker compose -f docker-compose.ct.yml up -d` (yalnızca de�
 - **Gizlilik (Kural 4):** Tablo listede olmayan adlar içerir. `status.sh`, Grafana (`fraud_ct_neutral_sample_total`)
   ve loglar yalnızca sayı gösterir.
 
+## Kontrol grupları (Hafta 6–7)
+
+Kontrol listeleri `control_members` tablosunda ve `data/private/control/` altında durur. Komutlar yalnızca sayı basar
+(Kural 4). Yöntem: [KONTROL_GRUBU_YONTEMI.md](../../docs/research/KONTROL_GRUBU_YONTEMI.md), kurulum:
+[KONTROL_LISTESI_KURULUM.md](../../docs/research/KONTROL_LISTESI_KURULUM.md).
+
+**crt.sh hızı:** İki istek arası varsayılan 15 saniye. Ayar 12 saniyenin altına inemez (işletmeci: IP başına dakikada
+5 istek). `network` servisi artık crt.sh ve Wayback'i de toplar: pozitifler 7 günde bir, kontrol üyeleri alan adı
+başına bir kez. Kaynak kilidi sayesinde aynı anda ikinci bir crt.sh süreci çalışmaz (çıkış kodu 75).
+
+**Pozitifleri bu makinede bir kez yeniden toplamak** (ana veritabanı Ubuntu, kurulum belgesi 3.2):
+
+```bash
+docker compose -f docker-compose.ct.yml stop network
+# official_actions 171 değilse önce import-official-actions (gizli CSV konteynere salt okunur bağlanmalı).
+docker compose -f docker-compose.ct.yml run --rm network collect-crtsh       # ~171 × 15 sn ≈ 45 dk
+docker compose -f docker-compose.ct.yml run --rm network collect-wayback
+docker compose -f docker-compose.ct.yml start network
+```
+
+**Kurma sırası** (öncelik G1 > G2 > G3 > G4; her komut aynı haftayı ya da aynı tek seferlik grubu ikinci kez kurmaz):
+
+Komutlar `migrate` imajıyla değil, depo kökünde (`git` ve `docs/research/finans_sozlugu.txt` gerekir) çalıştırılır:
+`dotnet run --project src/Fraud.Collectors -- <komut>`. Bağlantı metni `ConnectionStrings__FraudDb` ortam değişkeniyle
+verilir (db portu yayımlanmadığı için `docker compose exec`/tünel ya da salt okunur kopya; bkz. "Veriyi Windows makineye taşıma").
+
+1. `control-fetch-g1` (tek istek, yalnızca www.bddk.org.tr) → `control-build-g1 --input data/private/control/src/bddk-77-<tarih>.html`.
+   Çıktıdaki `web_adresi` sayısı yaklaşık 66 olmalı; çok farklıysa sayfa yapısı değişmiştir, devam etmeyin.
+2. Tranco liste kimliğini seçim günü sabitleyin (`https://tranco-list.eu/api/lists/date/<yyyyMMdd>`), sonra
+   `control-build-g2 --tranco-id <kimlik>`. Radar token'ı `deploy/linux/secrets/cloudflare_radar_token` dosyasında
+   (izin 600). Token yoksa komut durur. Önce %80 önkoşul denemesi yapılır; geçmezse G2 kurulmaz (B seçeneği).
+3. `control-build-g4a --tranco-id <aynı kimlik>`.
+4. Her hafta bittikten sonra, sırayla: `control-build-g3 --week 2026-W47`, sonra `control-build-g4b --week 2026-W47`.
+   Yaş için aday başına bir crt.sh sorgusu (15 sn) yapılır; `network` servisini önce durdurun.
+5. `control-g3a-trial` (bir kez; saatin ilk 10 dakikasında başlamaz).
+
+Her kurma bir taahhüt üretir: gizli açıklama `data/private/commitments/`, açık dosya `docs/evaluation/commitments/`
+(commit edilir). Kontrol üyelerinin DNS'i haftalık, cumartesi ve pazara karışık bölünür (`Collection__ControlDnsDays`).
+
 ## Günlük ağ kaydı (`network` servisi)
 
 `network` servisi `worker` komutunu şu sırayla çalıştırır, sonra 24 saat bekler:

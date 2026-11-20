@@ -179,6 +179,14 @@ services:
       Worker__Sources__0: Dns
       Worker__Sources__1: RipeStat
       Worker__Sources__2: InternetDb
+      # crt.sh ve Wayback: pozitifler 7 günde bir, kontrol üyeleri alan adı başına BİR KEZ (önbellek). crt.sh aralığı
+      # varsayılan 15 sn; kod 12 sn'nin altına izin vermez (işletmeci: IP başına dakikada 5 istek). Kaynak kilidi elle
+      # başlatılan ikinci bir süreci durdurur.
+      Worker__Sources__3: CrtSh
+      Worker__Sources__4: WaybackCdx
+      # Kontrol üyelerinin haftalık DNS günleri (Türkiye saatiyle). Üyeler iki güne karışık bölünür; pozitifler günlük.
+      Collection__ControlDnsDays__0: Saturday
+      Collection__ControlDnsDays__1: Sunday
       Worker__Interval: "1.00:00:00"
       # Metrikler: konteynerin içinde 9464 (yayımlanmaz).
       Metrics__Enabled: "true"
