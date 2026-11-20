@@ -25,11 +25,23 @@ public static class EvaluationCommands
     /// <summary>
     /// <c>eval-run --mode Historical|Locked --config &lt;dosya&gt; [--controls &lt;csv&gt;] [--clusters &lt;csv&gt;]
     /// [--commit &lt;sha&gt;] [--allow-rerun true --reason &lt;metin&gt;]</c>;
-    /// <c>eval-run --mode Prospective --config &lt;dosya&gt; --commitment &lt;açık dosya&gt; --opening &lt;açıklama dosyası&gt;</c>
+    /// <c>eval-run --mode Prospective --config &lt;dosya&gt; --commit &lt;sha&gt; --commitment &lt;açık dosya&gt; --opening &lt;açıklama dosyası&gt;</c>
     /// </summary>
-    public static async Task<int> EvalRunAsync(
+    public static Task<int> EvalRunAsync(
         FraudDbContext db, IDomainNameNormalizer normalizer, IReadOnlyDictionary<string, string?> args, TextWriter output,
-        CancellationToken cancellationToken, RepoContext? repo = null, IReadOnlySet<string>? pinnedTsaRoots = null)
+        CancellationToken cancellationToken, RepoContext? repo = null) =>
+        EvalRunCoreAsync(db, normalizer, args, output, repo, testHooks: null, cancellationToken);
+
+    /// <summary>
+    /// YALNIZCA testler (InternalsVisibleTo): Kendi TSA kökünü ve kökün commit tarihini veren, temiz derleme denetimini
+    /// atlayan kanca. Komut satırından erişilemez; <see cref="EvalRunAsync(FraudDbContext, IDomainNameNormalizer, IReadOnlyDictionary{string, string?}, TextWriter, CancellationToken, RepoContext?)"/>
+    /// kancayı her zaman boş verir.
+    /// </summary>
+    internal sealed record TestHooks(IReadOnlySet<string> PinnedTsaRoots, Func<string, (string Commit, DateTimeOffset Date)?> PinCommit);
+
+    internal static async Task<int> EvalRunCoreAsync(
+        FraudDbContext db, IDomainNameNormalizer normalizer, IReadOnlyDictionary<string, string?> args, TextWriter output,
+        RepoContext? repo, TestHooks? testHooks, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -47,16 +59,18 @@ public static class EvaluationCommands
         config.ValidateFor(mode);
         var signal = new RandomSignal(config.Signal.Seed);
 
+        // E11 ve E13: Kilitli ve ileriye dönük kip, ana ağaçtan çağrıldıysa (ya da program geçici worktree'nin içinden
+        // derlenmemişse) temiz bir geçici worktree'de derlenip orada çalışır. Sonucu yalnızca oradaki "iç" çalıştırma basar.
+        // İleriye dönük kipte bu şart: Kabul edilen TSA kökleri, ÇALIŞAN ikiliye gömülü listedir.
+        var needsCleanBuild = mode is EvaluationMode.Locked or EvaluationMode.Prospective && testHooks is null;
+        if (needsCleanBuild && (!repo.IsLinkedWorktree() || !LockedRunOrchestrator.IsInside(AppContext.BaseDirectory, repo.Root)))
+        {
+            return await LockedRunOrchestrator.RunAsync(repo, mode, configPath, args, output, cancellationToken).ConfigureAwait(false);
+        }
+
         LockedRunTicket? ticket = null;
         if (mode == EvaluationMode.Locked)
         {
-            // E11: Ana ağaçtan çağrıldıysa (ya da program geçici worktree'nin içinden derlenmemişse) temiz bir geçici
-            // worktree'de derleyip orada çalıştır. Kilidi yalnızca oradaki "iç" çalıştırma alır.
-            if (!repo.IsLinkedWorktree() || !LockedRunOrchestrator.IsInside(AppContext.BaseDirectory, repo.Root))
-            {
-                return await LockedRunOrchestrator.RunAsync(repo, configPath, args, output, cancellationToken).ConfigureAwait(false);
-            }
-
             if (await CheckFrozenStateAsync(repo, configPath, Arg(args, "commit"), output).ConfigureAwait(false) is not { } commit)
             {
                 return 64;
@@ -77,9 +91,16 @@ public static class EvaluationCommands
         (IReadOnlySet<string> Ids, DateTimeOffset Time)? committed = null;
         if (mode == EvaluationMode.Prospective)
         {
+            // E13: İç kipte de aynı kaynak ve ikili denetimi (HEAD, temiz ağaç, yok sayılan dosya yok, ikilinin +sha'sı).
+            if (testHooks is null && await CheckFrozenStateAsync(repo, configPath, Arg(args, "commit"), output).ConfigureAwait(false) is null)
+            {
+                return 64;
+            }
+
             // E10: Taahhüt anı doğrulanmış RFC 3161 damgasından gelir. Doğrulanamazsa veri bile yüklenmez, sonuç basılmaz.
             committed = await ReadCommittedAsync(
-                args, config, repo, pinnedTsaRoots ?? PinnedTsaRoots.Default, normalizer, loader, output, cancellationToken).ConfigureAwait(false);
+                args, config, repo, testHooks?.PinnedTsaRoots ?? PinnedTsaRoots.Default, testHooks?.PinCommit ?? repo.PinCommit,
+                normalizer, loader, output, cancellationToken).ConfigureAwait(false);
             if (committed is null)
             {
                 return 2;
@@ -360,7 +381,8 @@ public static class EvaluationCommands
     /// </remarks>
     private static async Task<(IReadOnlySet<string> Ids, DateTimeOffset Time)?> ReadCommittedAsync(
         IReadOnlyDictionary<string, string?> args, EvaluationConfig config, RepoContext repo, IReadOnlySet<string> pinnedTsaRoots,
-        IDomainNameNormalizer normalizer, EvaluationDataLoader loader, TextWriter output, CancellationToken cancellationToken)
+        Func<string, (string Commit, DateTimeOffset Date)?> pinCommit, IDomainNameNormalizer normalizer, EvaluationDataLoader loader,
+        TextWriter output, CancellationToken cancellationToken)
     {
         // E12: Kabul edilen TSA kökleri git'te izlenen tsa_roots.txt'te sabit. Liste boşsa ileriye dönük test hiç çalışmaz.
         if (pinnedTsaRoots.Count == 0)
@@ -400,6 +422,17 @@ public static class EvaluationCommands
             await output.WriteLineAsync("İleriye dönük test çalışmadı: zaman damgası doğrulanamadı (" + verified.Problem + ").").ConfigureAwait(false);
             return null;
         }
+
+        // E13: Kök, damgadan ÖNCE sabitlenmiş olmalı. Sonradan eklenen bir kök (sonucu gördükten sonra seçilmiş) kabul edilmez.
+        if (pinCommit(verified.RootFingerprint!) is not { } pin || pin.Date >= time)
+        {
+            await output.WriteLineAsync("İleriye dönük test çalışmadı: TSA kökünün tsa_roots.txt'e eklendiği commit bulunamadı ya da damga zamanından önce değil.")
+                .ConfigureAwait(false);
+            return null;
+        }
+
+        await output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
+            $"TSA kökü {pin.Commit} commit'inde ({pin.Date:u}) sabitlenmiş; damgadan önce.")).ConfigureAwait(false);
 
         var publicCommitment = CommitmentTool.ParsePublic(publicBytes);
         var opening = CommitmentTool.FromJson<CommitmentOpening>(await File.ReadAllTextAsync(openingPath, cancellationToken).ConfigureAwait(false));

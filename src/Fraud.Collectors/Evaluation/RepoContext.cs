@@ -217,6 +217,40 @@ public sealed class RepoContext
             .Where(p => !p.Split('/').Any(segment => segment is "bin" or "obj"))];
     }
 
+    /// <summary>Sabitlenmiş TSA kök listesinin depodaki yolu.</summary>
+    public const string TsaRootsFile = "src/Fraud.Collectors/Evaluation/tsa_roots.txt";
+
+    /// <summary>
+    /// Bir TSA kök parmak izinin tsa_roots.txt'e İLK eklendiği commit ve tarihi (E13):
+    /// <c>git log --format="%H %cI" -S&lt;parmak_izi&gt; -- tsa_roots.txt</c>. git log yeniden eskiye sıralar; son satır en eski
+    /// commit'tir. Bulunamazsa <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// Sınır: Commit tarihi commit'i yapanın beyanıdır (<c>GIT_COMMITTER_DATE</c> ile değiştirilebilir). Bu denetim
+    /// "kök sonuçtan sonra eklenmiş" hatasını yakalar; kasıtlı geriye tarihlemeye karşı tek koruma commit'in uzak depoya
+    /// zamanında itilmesi ya da damgalanmasıdır.
+    /// </remarks>
+    public (string Commit, DateTimeOffset Date)? PinCommit(string fingerprint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
+        if (fingerprint.Length != 64 || !fingerprint.All(char.IsAsciiHexDigitLower))
+        {
+            return null;
+        }
+
+        if (Git("log", "--format=%H %cI", "-S" + fingerprint, "--", TsaRootsFile) is not { ExitCode: 0 } r)
+        {
+            return null;
+        }
+
+        var oldest = r.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+        var parts = oldest?.Split(' ');
+        return parts is { Length: 2 } && DateTimeOffset.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var date)
+            ? (parts[0], date)
+            : null;
+    }
+
     /// <summary>HEAD'den ayrık (detached) geçici bir worktree açar.</summary>
     public bool AddDetachedWorktree(string path) => Git("worktree", "add", "--detach", path, "HEAD") is { ExitCode: 0 };
 

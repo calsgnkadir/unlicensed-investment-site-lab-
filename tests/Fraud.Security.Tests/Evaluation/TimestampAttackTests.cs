@@ -118,7 +118,7 @@ public sealed class TimestampAttackTests : IDisposable
             new HashSet<string>(StringComparer.Ordinal) { TimestampVerifier.Fingerprint(pinnedOther.Root) }).Time);
     }
 
-    [Fact(Skip = "açık: E13 ileriye dönük kip kaynak/derleme denetiminden geçmiyor; tsa_roots.txt yerelde değiştirilip kendi kökü eklenerek E12 atlatılır")]
+    [Fact]
     public void Prospective_mode_runs_only_from_a_verified_clean_build()
     {
         // Bulgu E13: Gömülü liste, ÇALIŞAN ikilinin derlendiği dosyadır. Kilitli kip temiz worktree'den derlenir; ileriye

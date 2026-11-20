@@ -86,11 +86,21 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         await File.WriteAllTextAsync(config, "{ \"timestampAuthorityRootFile\": " + System.Text.Json.JsonSerializer.Serialize(rootFile) + " }", ct);
         string[] args = ["--mode", "Prospective", "--config", config, "--commitment", publicOut, "--opening", opening];
         var normalizer = new PublicSuffixDomainNormalizer();
+        var pinnedBefore = new EvaluationCommands.TestHooks(tsa.Pins, _ => (new string('c', 40), GenTime.AddDays(-30)));
+        Task<int> Run(TextWriter w, EvaluationCommands.TestHooks hooks) =>
+            EvaluationCommands.EvalRunCoreAsync(db, normalizer, EvaluationCommands.ParseArgs(args), w, repo, hooks, ct);
+
+        // E13: Kancasız (komut satırının yolu) ileriye dönük kip temiz derleme ister. Geçici kök git deposu değil: durur.
+        using (var noBuild = new StringWriter())
+        {
+            Assert.Equal(64, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), noBuild, ct, repo));
+            Assert.DoesNotContain("Recall", noBuild.ToString(), StringComparison.Ordinal);
+        }
 
         // .tsr yok: sonuç basılmaz.
         using (var noTsr = new StringWriter())
         {
-            Assert.Equal(2, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), noTsr, ct, repo, tsa.Pins));
+            Assert.Equal(2, await Run(noTsr, pinnedBefore));
             Assert.DoesNotContain("Recall", noTsr.ToString(), StringComparison.Ordinal);
         }
 
@@ -99,7 +109,7 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         await File.WriteAllBytesAsync(publicOut + ".tsr", other.Respond(await File.ReadAllBytesAsync(publicOut + ".tsq", ct), GenTime), ct);
         using (var wrong = new StringWriter())
         {
-            Assert.Equal(2, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), wrong, ct, repo, tsa.Pins));
+            Assert.Equal(2, await Run(wrong, pinnedBefore));
             Assert.Contains("zaman damgası doğrulanamadı", wrong.ToString(), StringComparison.Ordinal);
             Assert.DoesNotContain("Recall", wrong.ToString(), StringComparison.Ordinal);
         }
@@ -108,16 +118,26 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         File.Delete(publicOut + ".tsr");
         await File.WriteAllBytesAsync(publicOut + ".tsr", tsa.Respond(await File.ReadAllBytesAsync(publicOut + ".tsq", ct), GenTime), ct);
         using var ok = new StringWriter();
-        Assert.Equal(0, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), ok, ct, repo, tsa.Pins));
+        Assert.Equal(0, await Run(ok, pinnedBefore));
+        Assert.Contains("commit'inde", ok.ToString(), StringComparison.Ordinal);
         Assert.Contains("genTime)=2026-11-20 08:30:00Z", ok.ToString(), StringComparison.Ordinal);
         Assert.Contains("TSA kökü SHA-256=" + TimestampVerifier.Fingerprint(tsa.Root), ok.ToString(), StringComparison.Ordinal);
         Assert.Contains("Recall", ok.ToString(), StringComparison.Ordinal);
 
         // E12: Sabitlenmiş liste boşsa (gömülü varsayılan) ileriye dönük test hiç çalışmaz.
         using var empty = new StringWriter();
-        Assert.Equal(2, await EvaluationCommands.EvalRunAsync(db, normalizer, EvaluationCommands.ParseArgs(args), empty, ct, repo));
+        Assert.Equal(2, await Run(empty, pinnedBefore with { PinnedTsaRoots = new HashSet<string>() }));
         Assert.Contains("Sabitlenmiş TSA kökü yok", empty.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("Recall", empty.ToString(), StringComparison.Ordinal);
+
+        // E13: Kök damgadan SONRA commit edildiyse ya da commit'i bulunamazsa sonuç basılmaz.
+        using var pinnedAfter = new StringWriter();
+        Assert.Equal(2, await Run(pinnedAfter, pinnedBefore with { PinCommit = _ => (new string('d', 40), GenTime.AddMinutes(1)) }));
+        Assert.Contains("damga zamanından önce değil", pinnedAfter.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Recall", pinnedAfter.ToString(), StringComparison.Ordinal);
+        using var notPinned = new StringWriter();
+        Assert.Equal(2, await Run(notPinned, pinnedBefore with { PinCommit = _ => null }));
+        Assert.DoesNotContain("Recall", notPinned.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -155,13 +175,37 @@ public sealed class TimestampAndRepoTests(PostgresFixture postgres) : IDisposabl
         var worktree = Path.Combine(_dir.FullName, "gecici");
         var args = EvaluationCommands.ParseArgs(["--commit", new string('a', 40), "--controls", Path.Combine(root, "data", "private", "k.csv")]);
 
-        var inner = LockedRunOrchestrator.InnerArguments(repo, worktree, Path.Combine(root, "config", "eval.json"), args).ToDictionary(x => x.Key, x => x.Value);
+        var inner = LockedRunOrchestrator.InnerArguments(repo, Fraud.Evaluation.EvaluationMode.Locked, worktree, Path.Combine(root, "config", "eval.json"), args).ToDictionary(x => x.Key, x => x.Value);
 
         Assert.Equal("Locked", inner["mode"]);
         Assert.Equal(Path.Combine(worktree, "config", "eval.json"), inner["config"]);
         Assert.Equal(Path.Combine(root, "data", "private", "k.csv"), inner["controls"]);
         Assert.True(LockedRunOrchestrator.IsInside(Path.Combine(worktree, "src", "a.dll"), worktree));
         Assert.False(LockedRunOrchestrator.IsInside(Path.Combine(root, "src", "a.dll"), worktree));
+    }
+
+    [Fact]
+    public void Pin_commit_of_an_unknown_fingerprint_is_not_found_in_the_real_repo()
+    {
+        var repo = RepoContext.Find(AppContext.BaseDirectory);
+
+        Assert.Null(repo.PinCommit(new string('a', 64)));
+        Assert.Null(repo.PinCommit("--format=x")); // biçimsiz girdi git'e hiç gitmez
+    }
+
+    [Fact]
+    public void Prospective_inner_arguments_carry_the_commitment_files_as_full_paths()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(_dir.FullName, "ana2")).FullName;
+        File.WriteAllText(Path.Combine(root, RepoContext.MarkerFile), "");
+        var args = EvaluationCommands.ParseArgs(["--commit", new string('a', 40), "--commitment", "docs/c.json", "--opening", "o.json"]);
+
+        var inner = LockedRunOrchestrator.InnerArguments(RepoContext.At(root), Fraud.Evaluation.EvaluationMode.Prospective,
+            Path.Combine(_dir.FullName, "gecici"), Path.Combine(root, "eval.json"), args).ToDictionary(x => x.Key, x => x.Value);
+
+        Assert.Equal("Prospective", inner["mode"]);
+        Assert.Equal(Path.GetFullPath("docs/c.json"), inner["commitment"]);
+        Assert.True(Path.IsPathFullyQualified(inner["opening"]));
     }
 
     // ---- E8 ----

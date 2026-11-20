@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using Fraud.Evaluation;
 
 namespace Fraud.Collectors.Evaluation;
 
@@ -33,9 +34,16 @@ public static class LockedRunOrchestrator
     private static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(20);
     private static readonly TimeSpan RunTimeout = TimeSpan.FromHours(6);
 
+    /// <param name="mode">Kilitli ya da ileriye dönük kip (E13: ileriye dönük kip de yalnızca temiz derlemeyle çalışır).</param>
     public static async Task<int> RunAsync(
-        RepoContext repo, string configPath, IReadOnlyDictionary<string, string?> args, TextWriter output, CancellationToken cancellationToken)
+        RepoContext repo, EvaluationMode mode, string configPath, IReadOnlyDictionary<string, string?> args, TextWriter output,
+        CancellationToken cancellationToken)
     {
+        if (mode is not (EvaluationMode.Locked or EvaluationMode.Prospective))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode), "Yalnızca kilitli ve ileriye dönük kip temiz worktree'de çalışır.");
+        }
+
         ArgumentNullException.ThrowIfNull(repo);
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -49,7 +57,7 @@ public static class LockedRunOrchestrator
         var worktree = Path.Combine(Path.GetTempPath(), "fraud-lab-locked-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(6)));
         if (!repo.AddDetachedWorktree(worktree))
         {
-            await output.WriteLineAsync("Geçici worktree açılamadı; kilitli test başlamadı.").ConfigureAwait(false);
+            await output.WriteLineAsync("Geçici worktree açılamadı; " + mode + " çalışmadı.").ConfigureAwait(false);
             return 2;
         }
 
@@ -58,14 +66,21 @@ public static class LockedRunOrchestrator
             var dotnet = GitExecutable.ResolveTool("dotnet", Environment.GetEnvironmentVariable("Dotnet__Path"));
             await output.WriteLineAsync("Temiz worktree'de derleniyor (" + worktree + ").").ConfigureAwait(false);
             var build = new ProcessStartInfo(dotnet) { WorkingDirectory = worktree };
-            foreach (var a in new[] { "build", Path.Combine("src", "Fraud.Collectors", "Fraud.Collectors.csproj"), "-c", "Release", "--nologo" })
+            // -nodeReuse:false ve --disable-build-servers: Derleme sunucusu süreçleri geçici klasörü açık tutmasın; yoksa
+            // Windows'ta klasör silinemez.
+            foreach (var a in new[]
+            {
+                "build", Path.Combine("src", "Fraud.Collectors", "Fraud.Collectors.csproj"), "-c", "Release", "--nologo",
+                "-nodeReuse:false", "--disable-build-servers",
+            })
             {
                 build.ArgumentList.Add(a);
             }
 
             if (ProcessRunner.Run(build, BuildTimeout, output) is not { ExitCode: 0 })
             {
-                await output.WriteLineAsync("Temiz worktree'de derleme başarısız; kilitli test başlamadı (kilit alınmadı).").ConfigureAwait(false);
+                await output.WriteLineAsync("Temiz worktree'de derleme başarısız; " + mode + " çalışmadı (kilit alınmadı, sonuç basılmadı).")
+                    .ConfigureAwait(false);
                 return 2;
             }
 
@@ -73,7 +88,7 @@ public static class LockedRunOrchestrator
             var run = new ProcessStartInfo(dotnet) { WorkingDirectory = worktree };
             run.ArgumentList.Add(program);
             run.ArgumentList.Add("eval-run");
-            foreach (var (key, value) in InnerArguments(repo, worktree, configPath, args))
+            foreach (var (key, value) in InnerArguments(repo, mode, worktree, configPath, args))
             {
                 run.ArgumentList.Add("--" + key);
                 run.ArgumentList.Add(value);
@@ -84,11 +99,27 @@ public static class LockedRunOrchestrator
         }
         finally
         {
+            await RemoveQuietlyAsync(repo, worktree, output).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Geçici worktree'yi siler. Silme hatası komutu istisnayla bitirmez: Sonuç zaten basılmıştır; silinemeyen klasör
+    /// yalnızca uyarı olarak yazılır (ör. Windows'ta bir süreç dosyayı hâlâ açık tutuyorsa).
+    /// </summary>
+    private static async Task RemoveQuietlyAsync(RepoContext repo, string worktree, TextWriter output)
+    {
+        try
+        {
             repo.RemoveWorktree(worktree);
             if (Directory.Exists(worktree))
             {
                 Directory.Delete(worktree, recursive: true);
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await output.WriteLineAsync("UYARI: Geçici worktree silinemedi, elle silin: " + worktree + " (git worktree prune).").ConfigureAwait(false);
         }
     }
 
@@ -97,11 +128,11 @@ public static class LockedRunOrchestrator
     /// ana deponun data/private klasöründe kaldığı için tam yolla verilir.
     /// </summary>
     public static IEnumerable<(string Key, string Value)> InnerArguments(
-        RepoContext repo, string worktree, string configPath, IReadOnlyDictionary<string, string?> args)
+        RepoContext repo, EvaluationMode mode, string worktree, string configPath, IReadOnlyDictionary<string, string?> args)
     {
         ArgumentNullException.ThrowIfNull(repo);
         ArgumentNullException.ThrowIfNull(args);
-        yield return ("mode", "Locked");
+        yield return ("mode", mode.ToString());
         yield return ("config", Path.Combine(worktree, Path.GetRelativePath(repo.Root, Path.GetFullPath(configPath))));
         foreach (var key in new[] { "commit", "allow-rerun", "reason" })
         {
@@ -111,7 +142,8 @@ public static class LockedRunOrchestrator
             }
         }
 
-        foreach (var key in new[] { "controls", "clusters" })
+        // Gizli ya da depo dışındaki dosyalar tam yolla (ileriye dönük kipte taahhüt dosyaları da).
+        foreach (var key in new[] { "controls", "clusters", "commitment", "opening", "tsq", "tsr" })
         {
             if (args.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
             {

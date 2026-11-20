@@ -85,7 +85,9 @@ Neden: Ana ağaçta "temiz ağaç + ikilinin commit'i" çalışan kodu kanıtlam
 
 Temiz worktree'de yalnızca HEAD'deki izlenen dosyalar vardır. Bu yüzden ikilideki `+sha` değeri yalnızca orada güvenilir sayılır. Geçici worktree'nin içinden derlenmemiş bir program kilit almaz.
 
-Ayrı bir komut yerine `eval-run --mode Locked` seçildi. Böylece hatırlanacak tek komut var ve kirli ağaçtan kilitli test yolu hiç yok.
+Ayrı bir komut yerine `eval-run --mode Locked` seçildi. Böylece hatırlanacak tek komut var ve kirli ağaçtan kilitli test yolu hiç yok. İleriye dönük kip de aynı yoldan geçer (E13).
+
+Derleme `-nodeReuse:false --disable-build-servers` ile yapılır. Böylece derleme sunucusu süreçleri geçici klasörü açık tutmaz. Klasör yine de silinemezse komut hata vermez; yalnızca uyarı yazar. Bu durumda klasör elle silinir ve `git worktree prune` çalıştırılır.
 
 Her iki aşamada da depo kökü `git rev-parse --show-toplevel` çıktısıyla aynı olmalıdır. Bütün git çağrıları `-c core.fsmonitor=false` ile yapılır. Denetimler:
 
@@ -111,7 +113,7 @@ Bu iki komut elle ve hemen çalıştırılır. Yapılmazsa kilitli testin bir ke
 ## İleriye dönük test
 
 ```
-dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --config <dosya> --commitment <açık taahhüt> --opening <açıklama dosyası>
+dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --config <depoda izlenen dosya> --commit <40 karakter> --commitment <açık taahhüt> --opening <açıklama dosyası>
 ```
 
 - Alarm kümesi yeniden **hesaplanmaz**. Taahhüt edilmiş listeden okunur.
@@ -127,6 +129,9 @@ dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --confi
 
   Bunlardan biri tutmazsa sonuç basılmaz. Kullanılan kökün parmak izi çıktıya yazılır.
 - **Sabitlenmiş kök listesi şu an boş.** Bu çalışmada ağa erişim yoktu, gerçek bir TSA kökü indirilmedi. Liste boşken ileriye dönük test çalışmaz. Kök ekleme adımı dosyanın başında yazar. Kök, taahhütten **önce** commit edilmelidir.
+- **İleriye dönük kip de temiz derlemeyle çalışır (E13):** Kilitli testteki gibi geçici worktree, HEAD eşleşmesi, temiz ağaç ve ikilinin `+sha` kontrolü uygulanır. Neden: Kabul edilen kökler, çalışan ikiliye gömülü listedir. Commit edilmemiş bir `tsa_roots.txt` ile derlenmiş program kendi kökünü kabul ederdi.
+- **Kökün sabitlendiği tarih:** Kökün parmak izi, damga zamanından **önce** commit edilmiş olmalı. Tarih şu komutla bulunur: `git log --format="%H %cI" -S<parmak_izi> -- src/Fraud.Collectors/Evaluation/tsa_roots.txt`. En eski commit, kökün eklendiği commit sayılır. Commit bulunamazsa ya da tarihi damgadan sonraysa sonuç basılmaz. Commit ve tarihi çıktıya yazılır.
+- **Sınır:** Commit tarihi, commit'i yapanın beyanıdır (`GIT_COMMITTER_DATE` ile değiştirilebilir). Bu denetim "kök sonuç görüldükten sonra eklendi" hatasını yakalar. Kasıtlı geriye tarihlemeye karşı ise commit'in zamanında uzak depoya itilmesi ya da damgalanması gerekir.
 - **Bilinen sınır:** İptal (CRL / OCSP) denetimi yapılmaz, çünkü çevrimdışı çalışıyoruz. İptal edilmiş bir TSA sertifikasının damgası bu yüzden kabul edilebilir. Damga, sertifikanın `genTime` anındaki geçerliliğine göre değerlendirilir.
 - İlk sertifikası bilinmeyen birim, pozitif de kontrol de olsa, bu teste girmez.
 
