@@ -498,6 +498,11 @@ Kadircan bu bölümdeki 10 kararı aşağıdaki şekliyle onayladı. Belge, bu b
 
 ## Değişiklik kaydı
 
+- 2026-11-21 (kurulum sonucu, sinyal sonucu görülmeden):
+  - **G1:** BDDK listesinden 66 banka alındı. Taahhüt dosyası: `docs/evaluation/commitments/kontrol-g1.json`.
+  - **G2 önkoşul denemesi geçmedi.** Tranco GQ9JK listesinin ilk 1.000 sırasından tohumlu olarak 100 alan adı seçildi ve Cloudflare Radar'a soruldu. Yalnızca 14'ü için kategori döndü; eşik %80'di. Hata alınan sorgu olmadı. Deneme kullanılmış sayılır ve tekrarlanmaz. Karar 6'ya göre G2 için B seçeneğine (Wikidata) geçilir. Not: Kategori oranının bu kadar düşük çıkması bir uygulama hatasından kaynaklanıyor olabilir. Bu ihtimal, denemeyi tekrarlamadan yalnızca kod ve API belgesi okunarak incelenecek. Sonuç buraya yazılacak. Bir hata bulunsa bile deneme yeniden yapılmaz.
+  - **G4a:** Tranco GQ9JK listesinden 300 alan adı seçildi. Taahhüt dosyası: `docs/evaluation/commitments/kontrol-g4a.json`. Elenenler: SPK pozitifleriyle çakışan 8 ad (E01), başka bir grupta olan 32 ad (E02), normalleştirilemeyen 1.012 ad (E00) ve 1 tekrar.
+
 - 2026-11-20 (Kadircan onayı, hiçbir sonuç görülmeden). Kurulabilirlik incelemesinin ([KONTROL_LISTESI_KURULUM.md](KONTROL_LISTESI_KURULUM.md), Bölüm 5.4 ve 7) ardından şu değişiklikler kabul edildi:
   1. **G1:** Resmi kaynakta web adresi yalnızca BDDK banka listesinde var. Bu yüzden G1 yaklaşık 66 kurumdan oluşur. TSPB üye listesi web adresi içeriyorsa aracı kurumlar da G1'e girer. Bu durum kontrol edilir ve sonucu buraya yazılır.
   2. **crt.sh:** İki istek arasında en az 15 saniye beklenir. crt.sh işletmecisi dakikada 5 istek sınırı bildirdi. ROADMAP'teki "5 saniyede 1" hızı bu sınırı aşıyordu.
