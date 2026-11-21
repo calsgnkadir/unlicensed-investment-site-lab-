@@ -498,6 +498,15 @@ Kadircan bu bölümdeki 10 kararı aşağıdaki şekliyle onayladı. Belge, bu b
 
 ## Değişiklik kaydı
 
+- 2026-11-21 (G2 için B seçeneği; Wikidata sorgusu çalıştırılmadan yazıldı):
+  - **Radar denemesinin incelenmesi:** Kodda kullanılan uç nokta ve cevapta kategorinin okunduğu yol, Radar'ın resmi belgesiyle aynı. Denemede hiç hata alınmadı. Bu yüzden 14/100 sonucu büyük olasılıkla Radar'ın kapsamasının gerçekten düşük olmasından kaynaklanıyor. Ancak ham cevaplar saklanmadığı için bunun bir uygulama hatası olmadığı kesin değil. Deneme yine de kullanılmış sayılır.
+  - **Plan:** G2, [G2_WIKIDATA_PLANI.md](G2_WIKIDATA_PLANI.md) belgesindeki sorguyla kurulur. Kapsam: konusu iktisat veya finans olan haber kuruluşları (iş gazetesi, gazete ve dergi) ve bu kuruluşların resmi web sitesi (P856). Bitiş tarihi geçmiş ya da kullanımdan kalkmış P856 değerleri elenir.
+  - **Eğitim kolu çıkarıldı:** Eğitim sınıfının Wikidata kimliği doğrulanamadı. Doğrulanmamış bir parçayı önceden kayıtlı sorguya koymamak için bu kol sorgudan çıkarıldı. G2 bu nedenle yalnızca finans haber kuruluşlarından oluşur.
+  - **Türkiye bağı:** Süzgeç olarak değil, etiket sütunu olarak kullanılır. Sonuçlar hem tamamı için hem de Türkiye'ye bağlı alt küme için ayrı raporlanır.
+  - **Sorgu sınırı:** En fazla 3 sorgu çalıştırılır, aralarında en az 60 saniye beklenir. User-Agent bilgisine projenin herkese açık GitHub adresi yazılır, kişisel e-posta yazılmaz.
+  - **Kayıt:** Sorgu metni ve tohum, sorgu çalıştırılmadan önce commit edilir. Ham cevabın SHA-256 özeti ve sorgunun UTC zamanı kayda geçer.
+  - **Seçim:** Akış G4a ile aynıdır: elemeler, SHA-256(tohum|alan adı) sırasına göre ilk 300 ad ve tuzlu Merkle taahhüdü. Elemelerden sonra 100'den az ad kalırsa grup "yeterli örnek yok" olarak raporlanır ve boyutu yazılır.
+
 - 2026-11-21 (kurulum sonucu, sinyal sonucu görülmeden):
   - **G1:** BDDK listesinden 66 banka alındı. Taahhüt dosyası: `docs/evaluation/commitments/kontrol-g1.json`.
   - **G2 önkoşul denemesi geçmedi.** Tranco GQ9JK listesinin ilk 1.000 sırasından tohumlu olarak 100 alan adı seçildi ve Cloudflare Radar'a soruldu. Yalnızca 14'ü için kategori döndü; eşik %80'di. Hata alınan sorgu olmadı. Deneme kullanılmış sayılır ve tekrarlanmaz. Karar 6'ya göre G2 için B seçeneğine (Wikidata) geçilir. Not: Kategori oranının bu kadar düşük çıkması bir uygulama hatasından kaynaklanıyor olabilir. Bu ihtimal, denemeyi tekrarlamadan yalnızca kod ve API belgesi okunarak incelenecek. Sonuç buraya yazılacak. Bir hata bulunsa bile deneme yeniden yapılmaz.
