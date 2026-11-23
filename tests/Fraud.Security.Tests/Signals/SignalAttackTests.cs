@@ -118,7 +118,7 @@ public sealed class SignalAttackTests
 
     // ---- Açık bulgular ----
 
-    [Fact(Skip = "açık: S1 kilitli/ileriye dönük testte yerli marka listesi (data/private/signals/brands.txt) dondurulmuş sürüme bağlı değil; yalnızca SHA'sı basılıyor")]
+    [Fact]
     public void Locked_run_binds_the_domestic_brand_list_to_the_frozen_version()
     {
         // Bulgu S1: Marka listesi sinyal kuralının parçasıdır, ama git dışı bir dosyadır. Kilitli test temiz worktree'de derlenir;
