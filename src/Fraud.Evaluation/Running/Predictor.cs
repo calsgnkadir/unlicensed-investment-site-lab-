@@ -27,7 +27,9 @@ public static class Predictor
         // Son değerlendirme: referanstan önceki son günün son anı. Karar günü görünmez.
         var last = DayGrid.EndOfDayAtOrBefore(reference.AddTicks(-1));
         var own = observations.Where(o => o.SubjectId == subject.Id && o.KnownAt <= last).ToList();
-        var day = own.Count == 0 ? last : DayGrid.EndOfDayAtOrAfter(own.Min(o => o.KnownAt));
+        // Ad gözlemi zaman taşımaz (KnownAt = MinValue); değerlendirme başlangıcını belirlemez.
+        var timed = own.Where(o => o.Kind != ObservationKinds.Name).ToList();
+        var day = timed.Count == 0 ? last : DayGrid.EndOfDayAtOrAfter(timed.Min(o => o.KnownAt));
 
         var best = double.NegativeInfinity;
         DateTimeOffset? firstAlarm = null;

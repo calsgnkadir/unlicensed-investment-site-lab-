@@ -8,6 +8,12 @@ public static class ObservationKinds
     public const string Dns = "dns";
     public const string IpAsn = "ip_asn";
     public const string Port = "port";
+
+    /// <summary>
+    /// Birimin kayıtlı alan adı (Value). Ad zaman bilgisi taşımaz: <see cref="DateTimeOffset.MinValue"/> ile her görünümde
+    /// vardır. Ad sinyalleri (baseline, marka, numaralı ad) buradan okur. Yalnızca bellekte; hiçbir çıktıya yazılmaz (Kural 4).
+    /// </summary>
+    public const string Name = "name";
 }
 
 /// <summary>
@@ -18,7 +24,8 @@ public static class ObservationKinds
 /// <param name="KnownAt">Bu bilginin herkesçe bilinebilir olduğu en erken an. Gelecek sızıntısı bununla engellenir.</param>
 /// <param name="ObservedAt">Bu sistemin bilgiyi topladığı an. Denetim içindir, filtrede kullanılmaz (tek istisna:
 /// ileriye dönük testte arşiv için <c>KnownAt = ObservedAt</c>).</param>
-/// <param name="Value">Kısa değer (ör. issuer). Alan adı veya kişi verisi taşımaz.</param>
+/// <param name="Value">Kısa değer: sertifikada sertifika kimliği, <see cref="ObservationKinds.Name"/> gözleminde kayıtlı alan adı.
+/// Kişi verisi taşımaz. Ad yalnızca bellekte durur; rapor ve metin çıktıları <c>Value</c>'yu hiç basmaz (Kural 4).</param>
 public sealed record Observation(string SubjectId, string Kind, DateTimeOffset KnownAt, DateTimeOffset ObservedAt, string? Value = null);
 
 /// <summary>

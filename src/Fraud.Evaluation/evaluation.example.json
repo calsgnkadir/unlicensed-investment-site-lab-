@@ -8,9 +8,9 @@
   "controlTuningShare": 0.70,
   // Onay bekliyor: kontrol referansı = ilk sertifika + ayar pozitiflerinden çekilen gecikme.
   "controlReference": "MatchedLag",
-  // Onay bekliyor: eşik ayar kontrollerinde (G3 + G4) %1 yanlış alarm.
+  // Eşik ayar kontrollerinde %1 yanlış alarm. Eşik YALNIZCA G4'ten seçilir (DECISIONS 2026-11-21); başka grup reddedilir.
   "targetFalseAlarmRate": 0.01,
-  "calibrationGroups": [ "ControlHardNegative", "ControlRandom" ],
+  "calibrationGroups": [ "ControlRandom" ],
   // Onay bekliyor.
   "bootstrapIterations": 2000,
   // VARSAYIM, ölçülmedi.
@@ -21,6 +21,17 @@
   "archiveKnownDelayDays": 7,
   // Bir grubun "veri var mı" oranı pozitiflerden bu kadar farklıysa rapor uyarır.
   "coverageWarningGap": 0.20,
-  "signal": { "name": "random", "seed": "random-2026-11-15" }
+  // Sinyal (Hafta 7). name: random | baseline | brand | new-cert-lexicon | cert-burst | numbered | sum.
+  // "sum" parçaların ağırlıksız toplamıdır. ablation yalnızca Historical kipte çalışır.
+  // brand için önce: signals-brands (data/private/signals/brands.txt). Sayılar sabit varsayılan, sonuca göre seçilmedi.
+  "signal": {
+    "name": "random",
+    "seed": "random-2026-11-15",
+    "parts": [ "baseline", "brand", "new-cert-lexicon", "cert-burst" ],
+    "ablation": false,
+    "newCertificateDays": 28,
+    "burstWindowDays": 30,
+    "burstMinCertificates": 5
+  }
   // Kilit dosyasının yolu yapılandırmada YOKTUR: kodda sabit, depo köküne bağlı (E1).
 }

@@ -6,7 +6,7 @@ using Fraud.Evaluation;
 using Fraud.Evaluation.Commitments;
 using Fraud.Evaluation.Model;
 using Fraud.Evaluation.Running;
-using Fraud.Evaluation.Signals;
+using Fraud.Signals;
 using Fraud.Infrastructure.DomainNames;
 using Fraud.Infrastructure.Persistence;
 
@@ -57,7 +57,7 @@ public static class EvaluationCommands
 
         // Yapılandırmanın TAMAMI kilitten önce doğrulanır (mentör maddesi 5): hata tek hakkı harcamasın.
         config.ValidateFor(mode);
-        var signal = new RandomSignal(config.Signal.Seed);
+
 
         // E11 ve E13: Kilitli ve ileriye dönük kip, ana ağaçtan çağrıldıysa (ya da program geçici worktree'nin içinden
         // derlenmemişse) temiz bir geçici worktree'de derlenip orada çalışır. Sonucu yalnızca oradaki "iç" çalıştırma basar.
@@ -67,6 +67,16 @@ public static class EvaluationCommands
         {
             return await LockedRunOrchestrator.RunAsync(repo, mode, configPath, args, output, cancellationToken).ConfigureAwait(false);
         }
+
+        // Sinyal kaynakları (sözlük, marka listesi) kilitten ÖNCE okunur: eksik dosya ya da tutmayan özet tek hakkı harcamasın.
+        // Kilitli kipte bu satır temiz worktree'deki iç çalıştırmada işler (S1: liste orada G1 taahhüdünden üretilir).
+        if (await SignalCommands.LoadResourcesAsync(config.Signal, mode, db, repo, output, cancellationToken).ConfigureAwait(false) is not { } loaded)
+        {
+            return 2;
+        }
+
+        var resources = loaded.Resources;
+        var signal = SignalCatalog.Create(config.Signal, resources);
 
         LockedRunTicket? ticket = null;
         if (mode == EvaluationMode.Locked)
@@ -83,7 +93,8 @@ public static class EvaluationCommands
             // Kilit veri yüklenmeden önce alınır: Yarıda kesilen çalıştırma da "kullanıldı" sayılır.
             ticket = LockedRunGuard.AcquireWithLegacy(
                 lockPath, repo.PrivatePath(config.LockFile), Convert.ToHexStringLower(SHA256.HashData(configBytes)), commit,
-                DateTimeOffset.UtcNow, allowRerun: Arg(args, "allow-rerun") == "true", rerunReason: Arg(args, "reason"));
+                DateTimeOffset.UtcNow, allowRerun: Arg(args, "allow-rerun") == "true", rerunReason: Arg(args, "reason"),
+                brandListSha256: loaded.DomesticBrandsSha256);
             await WriteAnchorInstructionsAsync(lockPath, output, cancellationToken).ConfigureAwait(false);
         }
 
@@ -115,6 +126,14 @@ public static class EvaluationCommands
         await output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
             $"Yüklendi: pozitif={c.Positives}, kontrol={c.Controls}, reddedilen kontrol satırı={c.ControlsRejected}, pozitifle çakışan (E01)={c.ControlsOverlappingPositives}, sertifika={c.Certificates}, arşiv={c.Archives}, dns={c.DnsRows}"))
             .ConfigureAwait(false);
+
+        if (config.Signal.Ablation)
+        {
+            // Yalnızca geçmiş veri testi (ValidateFor bunu zorunlu kılar). Her satır aynı bölme ve eşik kuralıyla çalışır.
+            var rows = Ablation.Run(config, data.Subjects, data.Observations, SignalCatalog.Parts(config.Signal, resources));
+            await output.WriteAsync(Ablation.ToText(rows)).ConfigureAwait(false);
+            return 0;
+        }
 
         EvaluationReport report;
         if (committed is { } commitment)

@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Fraud.Collectors.Control;
+namespace Fraud.Domain.Signals;
 
 /// <summary>Sözlük eşleşmesi: hangi terim ve baseline alt kümesinde mi.</summary>
 /// <param name="Term">Eşleşen ilk terim (dosyadaki sırayla).</param>
@@ -34,8 +34,8 @@ public sealed class FinanceLexicon
     /// <summary>Depo köküne göre dosya yolu.</summary>
     public const string RelativePath = "docs/research/finans_sozlugu.txt";
 
-    /// <summary>Baseline'ın 8 terimi (KeywordCandidateFilter.DefaultTerms ile aynı).</summary>
-    private static readonly HashSet<string> BaselineTerms = ["yatirim", "borsa", "kripto", "forex", "trade", "invest", "capital", "menkul"];
+    /// <summary>Baseline'ın 8 terimi: tek kaynak <see cref="Signals.BaselineTerms.All"/>.</summary>
+    private static readonly HashSet<string> BaselineSet = [.. Signals.BaselineTerms.All];
 
     private static readonly IdnMapping Idn = new() { AllowUnassigned = false, UseStd3AsciiRules = false };
 
@@ -107,7 +107,7 @@ public sealed class FinanceLexicon
         }
 
         var term = _terms.FirstOrDefault(t => folded.Contains(t, StringComparison.Ordinal));
-        return term is null ? null : new DictionaryMatch(term, BaselineTerms.Contains(term));
+        return term is null ? null : new DictionaryMatch(term, BaselineSet.Contains(term));
     }
 
     /// <summary>Etiketi Unicode'a çevirir ve Türkçe harfleri katlar.</summary>

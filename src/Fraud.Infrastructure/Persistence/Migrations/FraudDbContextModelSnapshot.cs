@@ -649,6 +649,10 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("source_list_id");
 
+                    b.Property<bool?>("TurkeyLinked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("turkey_linked");
+
                     b.Property<string>("Week")
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)")
@@ -668,6 +672,8 @@ namespace Fraud.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_control_members_frame", "frame IS NULL OR \"group\" IN ('G3', 'G4b')");
 
                             t.HasCheckConstraint("ck_control_members_seed", "length(btrim(seed)) > 0");
+
+                            t.HasCheckConstraint("ck_control_members_turkey", "turkey_linked IS NULL OR \"group\" = 'G2'");
                         });
                 });
 

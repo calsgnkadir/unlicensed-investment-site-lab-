@@ -9,6 +9,7 @@
     <ProjectReference Include="..\Fraud.Domain\Fraud.Domain.csproj" />
     <ProjectReference Include="..\Fraud.Evaluation\Fraud.Evaluation.csproj" />
     <ProjectReference Include="..\Fraud.Infrastructure\Fraud.Infrastructure.csproj" />
+    <ProjectReference Include="..\Fraud.Signals\Fraud.Signals.csproj" />
   </ItemGroup>
 
   <ItemGroup>

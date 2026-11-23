@@ -192,9 +192,11 @@ public static class EvaluationRunner
 {
     /// <summary>Geçmiş ve kilitli test. İleriye dönük test için <see cref="RunProspective"/>.</summary>
     /// <param name="now">Kontrol referansının üst sınırı. Boşsa sistem saati. Tekrar edilebilir çalıştırma için verilmeli.</param>
+    /// <param name="fixedThreshold">Yalnızca ablasyon: eşik seçilmez, bu değer kullanılır ("TOPLAM'ın eşiği sabit"). Yalnızca
+    /// geçmiş veri testinde kabul edilir; kilitli testte eşik her zaman kuralla seçilir.</param>
     public static EvaluationReport Run(
         EvaluationConfig config, EvaluationMode mode, IReadOnlyList<Subject> subjects, IReadOnlyList<Observation> observations,
-        ISignal signal, LockedRunTicket? lockTicket = null, DateTimeOffset? now = null)
+        ISignal signal, LockedRunTicket? lockTicket = null, DateTimeOffset? now = null, double? fixedThreshold = null)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(subjects);
@@ -203,6 +205,11 @@ public static class EvaluationRunner
         if (mode == EvaluationMode.Prospective)
         {
             throw new InvalidOperationException("İleriye dönük test taahhüt edilmiş listeyle çalışır: RunProspective.");
+        }
+
+        if (fixedThreshold is not null && mode != EvaluationMode.Historical)
+        {
+            throw new InvalidOperationException("Sabit eşik yalnızca geçmiş veri testindeki ablasyon içindir.");
         }
 
         if (mode == EvaluationMode.Locked && lockTicket is null)
@@ -223,13 +230,14 @@ public static class EvaluationRunner
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Observation>)[.. g], StringComparer.Ordinal);
         IReadOnlyList<Observation> ObservationsOf(Subject s) => byId.GetValueOrDefault(s.Id) ?? [];
 
-        // 3) Eşik: yalnızca ayar bölmesindeki, pozitife bağlı olmayan kalibrasyon kontrolleri.
+        // 3) Eşik: yalnızca ayar bölmesindeki, pozitife bağlı olmayan G4 kontrolleri (DECISIONS 2026-11-21). G4 alan adındaki
+        // kelimeye bakılmadan seçilir; G1, G2, G3 ve Çerçeve K eşiğe girmez, seçilen eşikte grup ve çerçeve başına ayrı raporlanır.
         var calibration = all
             .Where(s => split.PartOf(s.Id) == SplitPart.Tuning && !s.IsPositive && !s.LinkedToPositive
-                        && config.CalibrationGroups.Contains(s.Group))
+                        && s.Group == SubjectGroup.ControlRandom)
             .ToList();
         var calibrationScores = calibration.Select(s => Predictor.Predict(signal, s, ObservationsOf(s), threshold: null).Score).ToList();
-        var threshold = ThresholdSelector.Select(calibrationScores, config.TargetFalseAlarmRate);
+        var threshold = fixedThreshold ?? ThresholdSelector.Select(calibrationScores, config.TargetFalseAlarmRate);
 
         // 4) Test kümesi ve tahminler (eşik artık sabit).
         var testPart = mode == EvaluationMode.Locked ? SplitPart.Locked : SplitPart.Historical;

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Hafta 7 sinyalleri. Evaluation'daki ISignal/AsOfView sözleşmesini uygular; veritabanı ve dosya okuma bilmez. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fraud.Domain\Fraud.Domain.csproj" />
+    <ProjectReference Include="..\Fraud.Evaluation\Fraud.Evaluation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Yabancı marka listesi derlemeye gömülür: Çalışma anında değiştirilemez, sürümle birlikte donar. -->
+    <EmbeddedResource Include="foreign_brands.txt" LogicalName="Fraud.Signals.foreign_brands.txt" />
+  </ItemGroup>
+</Project>

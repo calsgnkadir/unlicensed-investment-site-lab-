@@ -400,6 +400,13 @@
           "OpenTelemetry.Extensions.Hosting": "[1.21.0, )"
         }
       },
+      "fraud.signals": {
+        "type": "Project",
+        "dependencies": {
+          "Fraud.Domain": "[1.0.0, )",
+          "Fraud.Evaluation": "[1.0.0, )"
+        }
+      },
       "Microsoft.EntityFrameworkCore": {
         "type": "CentralTransitive",
         "requested": "[10.0.14, )",

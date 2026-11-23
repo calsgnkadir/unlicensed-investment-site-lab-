@@ -138,3 +138,27 @@ Bu kararlar Kadircan tarafından onaylandı. Hiçbir sinyal sonucu görülmeden 
 | K çerçevesi | G3'ün K çerçevesine de N çerçevesindeki kurallar uygulanır: donmuş sözlük, "yeni" şartı (ilk sertifika en fazla 28 gün önce) ve çerçeve başına haftada en fazla 60 ad. Bir adın ilk görülme zamanı, `ct_candidates` tablosundaki en eski kayıt zamanıdır. |
 | Kişi adı deseni (E04) | Belge yalnızca sayım yapılmasını istiyor ve desen tanımlamıyor. Bu yüzden şimdilik uygulanmadı. Desen tanımlanırsa uygulanması buraya yazılır. |
 | Kontrol komutlarının çalıştığı yer | Kontrol komutları Ubuntu'da Docker Compose'un `tools` profilindeki servisle çalışır. Servis .NET SDK imajını kullanır ve veritabanına iç ağ üzerinden bağlanır. Veritabanı portu dışarı açılmaz. |
+
+## 2026-11-21: Hafta 7 sinyal kuralları
+
+Aşağıdaki kurallar gerçek veri görülmeden, kod yazılırken belirlendi. Eşiklerin hiçbiri ayar verisinde ya da sonuca bakılarak seçilmedi.
+
+| Konu | Karar |
+|---|---|
+| Baseline | Alan adının en soldaki etiketinde, aday süzgecindeki 8 terimden biri geçiyor mu? Terimler tek bir kaynaktan okunur. K çerçevesinde baseline tanım gereği alarm verir, bu yüzden sonuçlar çerçeve başına ayrı raporlanır. |
+| Yeni sertifika + sözlük | Alan adının ilk sertifikası, görünüm anından en fazla 28 gün önce alınmış olmalı. Ayrıca alan adı geniş finans sözlüğüyle eşleşmeli. 28 gün, kilitli test penceresiyle aynı uzunlukta. Bilinen sınır: Geçmiş veri testinde bu sinyal pratikte "sözlük eşleşmesi + en az bir sertifika" anlamına gelir. |
+| Sertifika patlaması | Görünüm anından önceki 30 günde en az 5 farklı sertifika. Gerekçe: Let's Encrypt sertifikası 90 gün geçerlidir ve 60. günde yenilenir. Normal bir alan adı 30 günde 1–2 sertifika alır. |
+| Numaralı ad | Etiket bir rakamla bitiyorsa ya da etikette art arda iki rakam varsa. |
+| Marka benzerliği | Yerli liste G1'deki BDDK bankalarının adlarından türetilir. Bu liste özeldir ve `data/private` altında tutulur. Yabancı liste FSB'nin G-SIB listesinden alınır ve donmuş bir dosyada durur. Bu listenin resmi kaynakla doğrulanması sürüyor. 5 karakterden kısa markalar listeye alınmaz. Eşleşme kuralı: Görsel olarak benzer karakterler dönüştürülür; sonra etiket markayı içeriyorsa ya da Levenshtein uzaklığı küçükse eşleşme sayılır. Uzaklık sınırı 8 karakterden kısa markalarda 1, daha uzun markalarda 2'dir. Markanın kendisi alarm vermez. |
+| Birleşik skor | Sinyallerin ağırlıksız toplamı kullanılır, mantıksal VEYA kullanılmaz. Gerekçe: Eşik, ayar kontrollerinde en fazla %1 yanlış alarm verecek şekilde seçiliyor. VEYA kullanılsaydı, kontrollerin %1'inden fazlasında 1 veren tek bir parça yüzünden birleşik sinyal hiç alarm veremezdi. Toplam kullanıldığında eşik 1 seçilirse sonuç VEYA ile aynıdır. |
+| Ablasyon | Her sinyal için "TOPLAM − x" ile karşılaştırma yapılır. ML.NET modeli ancak baseline'ı geçen bir sinyal görülürse denenir. |
+
+## 2026-11-21: Eşik seçimi yalnızca tarafsız kontrollerden yapılır (sonuç görülmeden)
+
+**Sorun:** Kod okunurken şu fark edildi: Eşik, G3 ve G4'teki ayar kontrollerinden seçiliyordu. G3 finans sözlüğüyle, K çerçevesi de aday kelime süzgeciyle seçildiği için bu birimler bazı sinyallerde tanım gereği 1 puan alır. Bu birimler eşik seçimine girerse, eşik %1 yanlış alarm sınırını tutturmak için 1'in üstüne çıkar ve o sinyal hiç alarm vermez. Örneğin baseline ölçüm yapılmadan susturulmuş olur. Ayrıca eşik, bizim belirlediğimiz G3:G4 ve K:N oranlarına bağımlı hale gelir.
+
+**Karar:** Eşik yalnızca G4'ün (G4a ve G4b) ayar bölümündeki kontrollerden seçilir. G4, alan adındaki kelimeye bakılmadan rastgele seçilir. G1, G2 ve G3 eşik seçimine girmez. Bu gruplar, seçilen eşikte ne kadar yanlış alarm ürettiklerini göstermek için grup ve çerçeve başına ayrı raporlanır.
+
+**Ek düzeltmeler:**
+- **Patlama sinyali:** Bir sertifika, yayıncı ve seri numarası çiftine göre bir kez sayılır. Böylece aynı sertifikanın ön sertifikası (precertificate) ve son hali iki sertifika sayılmaz.
+- **Ablasyon raporu:** Her satır kendi eşiğini seçtiği için "TOPLAM − x" farkı, eşiğin değişmesinden gelen etkiyi de içerir. Rapor bunu açıkça yazar. Ayrıca her satır için TOPLAM'ın eşiği sabit tutularak hesaplanan farkı da gösterir.

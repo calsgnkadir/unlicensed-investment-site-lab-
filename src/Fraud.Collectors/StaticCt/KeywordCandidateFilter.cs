@@ -14,8 +14,7 @@ public sealed class CandidateFilterOptions
     /// Aşama 0 ölçümündeki (docs/phase0/STATIC_CT_HACIM.md) liste. Ölçülen geçiş oranı (~%0,08) yalnızca bu
     /// liste için geçerlidir; terim eklemek oranı ve disk ihtiyacını değiştirir, yeniden ölçülmelidir.
     /// </summary>
-    public static readonly IReadOnlyList<string> DefaultTerms =
-        ["yatirim", "borsa", "kripto", "forex", "trade", "invest", "capital", "menkul"];
+    public static readonly IReadOnlyList<string> DefaultTerms = Fraud.Domain.Signals.BaselineTerms.All;
 
     /// <summary>Yapılandırmadan gelen terimler. Boşsa <see cref="DefaultTerms"/> kullanılır.</summary>
     public IList<string> Terms { get; } = [];

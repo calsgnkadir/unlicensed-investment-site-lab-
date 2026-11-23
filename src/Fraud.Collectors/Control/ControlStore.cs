@@ -9,7 +9,7 @@ namespace Fraud.Collectors.Control;
 /// <summary>Seçilen bir üye (kaydedilmeden önce). Alan adı yalnızca bellekte; hiçbir yere basılmaz.</summary>
 public sealed record SelectedMember(
     string RegistrableDomain, SamplingFrame? Frame, DateTimeOffset? FirstLoggedAt = null, DateTimeOffset? FirstCertificateAt = null,
-    string? DictionarySubset = null);
+    string? DictionarySubset = null, bool? TurkeyLinked = null);
 
 /// <summary>control_members ve control_builds tablolarının okunması ve yazılması.</summary>
 public sealed class ControlStore(FraudDbContext db, IDomainNameNormalizer normalizer)
@@ -45,7 +45,7 @@ public sealed class ControlStore(FraudDbContext db, IDomainNameNormalizer normal
             var domain = await DomainRowAsync(member.RegistrableDomain, now, cancellationToken).ConfigureAwait(false);
             db.ControlMembers.Add(new ControlMember(
                 domain, group, member.Frame, now, week, seed, sourceListId, commitmentId, member.FirstLoggedAt, member.FirstCertificateAt,
-                member.DictionarySubset));
+                member.DictionarySubset, member.TurkeyLinked));
         }
 
         db.ControlBuilds.Add(new ControlBuild(group, weekKey, now, seed, sourceListId, commitmentId, members.Count, JsonSerializer.Serialize(counts)));

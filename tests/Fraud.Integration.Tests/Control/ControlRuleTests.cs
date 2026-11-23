@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using Fraud.Collectors.Control;
+using Fraud.Domain.Signals;
 using Fraud.Infrastructure.DomainNames;
 using Fraud.Integration.Tests.Infrastructure;
 

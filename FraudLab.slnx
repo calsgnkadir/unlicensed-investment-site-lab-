@@ -5,10 +5,12 @@
     <Project Path="src/Fraud.Domain/Fraud.Domain.csproj" />
     <Project Path="src/Fraud.Evaluation/Fraud.Evaluation.csproj" />
     <Project Path="src/Fraud.Infrastructure/Fraud.Infrastructure.csproj" />
+    <Project Path="src/Fraud.Signals/Fraud.Signals.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Fraud.Evaluation.Tests/Fraud.Evaluation.Tests.csproj" />
     <Project Path="tests/Fraud.Integration.Tests/Fraud.Integration.Tests.csproj" />
     <Project Path="tests/Fraud.Security.Tests/Fraud.Security.Tests.csproj" />
+    <Project Path="tests/Fraud.Signals.Tests/Fraud.Signals.Tests.csproj" />
   </Folder>
 </Solution>

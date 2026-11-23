@@ -1,6 +1,7 @@
 using System.Globalization;
 using Fraud.Collectors.Collection;
 using Fraud.Collectors.Control;
+using Fraud.Domain.Signals;
 using Fraud.Collectors.Evaluation;
 using Fraud.Collectors.Monitoring;
 using Fraud.Domain.CertificateTransparency;
@@ -321,8 +322,8 @@ public sealed class ControlBuildTests(PostgresFixture postgres) : IDisposable
         await db.SaveChangesAsync(ct);
         var saturday = new DateTimeOffset(2026, 11, 21, 9, 0, 0, TimeSpan.FromHours(3)).ToUniversalTime();
         var time = new FakeTimeProvider(saturday);
-        var crtSh = new CountingCollector(CollectionSource.CrtSh, TimeSpan.FromDays(7));
-        var dns = new CountingCollector(CollectionSource.Dns, TimeSpan.FromHours(20));
+        var crtSh = new CountingCollector(CollectionSource.CrtSh, TimeSpan.FromDays(7), time);
+        var dns = new CountingCollector(CollectionSource.Dns, TimeSpan.FromHours(20), time);
         var runner = new CollectionRunner(db, [crtSh, dns], new CollectionOptions { MeasurementLocation = "test-lab" }, time,
             NullLogger<CollectionRunner>.Instance);
 
@@ -442,7 +443,11 @@ public sealed class ControlBuildTests(PostgresFixture postgres) : IDisposable
     }
 
     /// <summary>Her hedefe "başarılı" collection_log satırı yazan sahte toplayıcı.</summary>
-    private sealed class CountingCollector(CollectionSource source, TimeSpan cacheTtl) : ISourceCollector
+    /// <summary>
+    /// Kayıt zamanı testin sahte saatinden gelir. Eskiden gerçek saat kullanılıyordu; test 2026-11-22'den sonra çalışınca
+    /// "8 gün sonra" anı gerçek kayıt zamanından önceye düşüyor ve önbellek yanlışlıkla taze görünüyordu.
+    /// </summary>
+    private sealed class CountingCollector(CollectionSource source, TimeSpan cacheTtl, TimeProvider time) : ISourceCollector
     {
         public int Calls { get; private set; }
 
@@ -453,7 +458,7 @@ public sealed class ControlBuildTests(PostgresFixture postgres) : IDisposable
         public async Task<CollectionLogEntry> CollectAsync(FraudDbContext db, CollectionTarget target, string location, CancellationToken cancellationToken)
         {
             Calls++;
-            var now = DateTimeOffset.UtcNow;
+            var now = time.GetUtcNow();
             var entry = new CollectionLogEntry(source, target.DomainId, location, now, now, 200, 1, CollectionOutcome.Success, CollectionErrorKind.None, 1, 0, 0, false);
             db.CollectionLog.Add(entry);
             await db.SaveChangesAsync(cancellationToken);

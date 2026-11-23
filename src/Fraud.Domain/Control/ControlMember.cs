@@ -8,7 +8,7 @@ public enum ControlGroup
     /// <summary>G1: Resmi kaynakta web adresi yazılı lisanslı kurumlar (bugün yalnızca BDDK bankaları).</summary>
     G1 = 1,
 
-    /// <summary>G2: Tranco + Cloudflare Radar kategorisi (haber, ekonomi ve finans, eğitim).</summary>
+    /// <summary>G2: Wikidata'dan konusu iktisat ya da finans olan haber kuruluşları (Değişiklik kaydı 2026-11-21; Radar yolu kullanılmıyor).</summary>
     G2 = 2,
 
     /// <summary>G3: Yeni ve geniş finans sözlüğüyle eşleşen zor negatifler (haftalık, çerçeve K ve N).</summary>
@@ -63,13 +63,19 @@ public sealed class ControlMember
         string? commitmentId,
         DateTimeOffset? firstLoggedAt = null,
         DateTimeOffset? firstCertificateAt = null,
-        string? dictionarySubset = null)
+        string? dictionarySubset = null,
+        bool? turkeyLinked = null)
     {
         ArgumentNullException.ThrowIfNull(domain);
         ArgumentException.ThrowIfNullOrWhiteSpace(seed);
         if (frame is not null && group is not (ControlGroup.G3 or ControlGroup.G4b))
         {
             throw new ArgumentException("Çerçeve yalnızca G3 ve G4b için anlamlı.", nameof(frame));
+        }
+
+        if (turkeyLinked is not null && group != ControlGroup.G2)
+        {
+            throw new ArgumentException("Türkiye etiketi yalnızca G2 için anlamlı.", nameof(turkeyLinked));
         }
 
         Domain = domain;
@@ -83,6 +89,7 @@ public sealed class ControlMember
         FirstLoggedAt = firstLoggedAt;
         FirstCertificateAt = firstCertificateAt;
         DictionarySubset = dictionarySubset;
+        TurkeyLinked = turkeyLinked;
     }
 
     public long Id { get; private set; }
@@ -118,6 +125,12 @@ public sealed class ControlMember
 
     /// <summary>G3: Eşleşen terim baseline alt kümesinde mi ("baseline") yoksa yalnızca geniş sözlükte mi ("wide").</summary>
     public string? DictionarySubset { get; private set; }
+
+    /// <summary>
+    /// G2: Wikidata kaydında ülke (P17) Türkiye mi. SÜZGEÇ DEĞİL, ETİKET: Sonuç hem bütün G2 için hem bu alt küme için ayrı
+    /// raporlanır (Değişiklik kaydı 2026-11-21). Diğer gruplarda <c>null</c>.
+    /// </summary>
+    public bool? TurkeyLinked { get; private set; }
 }
 
 /// <summary>

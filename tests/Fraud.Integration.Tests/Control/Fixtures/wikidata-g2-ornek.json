@@ -1,0 +1,20 @@
+{
+  "head": { "vars": [ "item", "site", "tr" ] },
+  "results": {
+    "bindings": [
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1001" }, "site": { "type": "uri", "value": "https://www.finans-gazete.example/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "true" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1001" }, "site": { "type": "uri", "value": "http://finans-gazete.example/en" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1002" }, "site": { "type": "uri", "value": "https://ekonomi-dergi.example/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1003" }, "site": { "type": "uri", "value": "https://borsa-haber.test/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1004" }, "site": { "type": "uri", "value": "https://pozitif-ornek.example/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1005" }, "site": { "type": "uri", "value": "https://g1-banka.example/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "true" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1006" }, "site": { "type": "uri", "value": "https://finans-blog.github.io/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1007" }, "site": { "type": "uri", "value": "javascript:alert(1)" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1008" }, "site": { "type": "uri", "value": "https://192.0.2.10/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1009" }, "site": { "type": "uri", "value": "https://kisi:sifre@gizli-kullanici.example/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "https://evil.example/Q1" }, "site": { "type": "uri", "value": "https://kotu-oge.example/" }, "tr": { "datatype": "http://www.w3.org/2001/XMLSchema#boolean", "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1010" }, "site": { "type": "literal", "value": "https://etiketsiz-tur.example/" }, "tr": { "type": "literal", "value": "false" } },
+      { "item": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1011" }, "site": { "type": "uri", "value": "https://trsiz.example/" } }
+    ]
+  }
+}

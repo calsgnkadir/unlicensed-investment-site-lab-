@@ -52,7 +52,7 @@ public static class G3aTrial
     /// <summary>crt.sh'in kimlik aramasındaki üst sınır (operatör açıklaması): bu kadar satır gelirse cevap kesik sayılır.</summary>
     public const int TruncationRows = 9_900;
 
-    public static readonly IReadOnlyList<string> BaselineTerms = ["yatirim", "borsa", "kripto", "forex", "trade", "invest", "capital", "menkul"];
+    public static readonly IReadOnlyList<string> BaselineTerms = Fraud.Domain.Signals.BaselineTerms.All;
 
     /// <summary>Üretim istemcisi: yalnızca crt.sh'e bağlanır, 15 sn aralık, 120 sn zaman aşımı, tekrar deneme yok.</summary>
     public static (PoliteHttpClient Client, HttpClient Http) CreateClient(string userAgent) =>

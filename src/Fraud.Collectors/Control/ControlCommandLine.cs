@@ -22,8 +22,8 @@ public static class ControlCommandLine
         var userAgent = services.GetRequiredService<CollectionOptions>().UserAgent;
         var output = Console.Out;
 
-        using var radar = command == "control-build-g2" ? RadarFromTokenFile(repo, args) : null;
-        using var tranco = command is "control-build-g2" or "control-build-g4a" ? new TrancoClient(userAgent) : null;
+        // Radar yolu kullanımdan kalktı (G2 Wikidata ile kurulur); token dosyası artık okunmaz.
+        using var tranco = command is "control-build-g4a" ? new TrancoClient(userAgent) : null;
         var ctx = new ControlContext
         {
             Db = services.GetRequiredService<FraudDbContext>(),
@@ -33,7 +33,6 @@ public static class ControlCommandLine
             Output = output,
             Time = services.GetRequiredService<TimeProvider>(),
             FirstCertificate = ControlCommands.CrtShFirstCertificate(services.GetRequiredService<ICrtShClient>()),
-            Radar = radar,
             Tranco = tranco,
         };
 
@@ -69,8 +68,28 @@ public static class ControlCommandLine
                     : await UsageAsync(output, "control-build-g1 --input <kaydedilmiş BDDK HTML>").ConfigureAwait(false);
 
             case "control-build-g2":
-                // Liste kimliği komut satırından alınmaz (C1): docs/evaluation/control_sources.json.
-                return await ControlCommands.BuildG2Async(ctx, cancellationToken).ConfigureAwait(false);
+                // Kullanımdan kalktı (Değişiklik kaydı 2026-11-21): Radar önkoşulu geçmedi. Kod kayıt için duruyor.
+                await output.WriteLineAsync("control-build-g2 (Radar) kullanımdan kalktı. G2: control-fetch-g2-wikidata, sonra control-build-g2-wikidata --input <ham cevap>.")
+                    .ConfigureAwait(false);
+                return 64;
+
+            case "control-fetch-g2-wikidata":
+            {
+                // İletişim adresi yalnızca sabitlenmiş dosyadan (git'te izlenen, temiz ağaç).
+                if (await ControlSourcesFile.LoadAsync(repo, output, cancellationToken).ConfigureAwait(false) is not { WikidataContactUrl: { } contact })
+                {
+                    await output.WriteLineAsync("Komut durdu: " + ControlSourcesFile.RelativePath + " içinde wikidata.contactUrl yok.").ConfigureAwait(false);
+                    return 2;
+                }
+
+                using var wikidata = new WikidataSparqlClient(contact);
+                return await G2WikidataCommands.FetchAsync(ctx, wikidata, cancellationToken).ConfigureAwait(false);
+            }
+
+            case "control-build-g2-wikidata":
+                return Arg(args, "input") is { } g2Input
+                    ? await G2WikidataCommands.BuildAsync(ctx, g2Input, cancellationToken).ConfigureAwait(false)
+                    : await UsageAsync(output, "control-build-g2-wikidata --input <data/private/control/src altındaki ham cevap>").ConfigureAwait(false);
 
             case "control-build-g4a":
                 return await ControlCommands.BuildG4aAsync(ctx, cancellationToken).ConfigureAwait(false);

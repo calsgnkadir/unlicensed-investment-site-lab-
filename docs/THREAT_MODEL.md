@@ -4,7 +4,7 @@ Tarih: 12 Kasım 2026, `00c09c7` sonrasına göre güncellendi. 13 Kasım 2026: 
 
 Bu belge her yeni dış kaynak, yeni uç veya yayına alma öncesinde güncellenir. Testler: `tests/Fraud.Security.Tests`. Açık bulgular orada `Skip = "açık: ..."` ile görünür durur.
 
-**Durum:** Hafta 1-2 denetiminin 11 bulgusu `00c09c7` commit'inde kapatıldı (Bölüm 5). N1-N9, M1-M6, E1-E13 ve Hafta 7 kontrol grubu bulguları C1-C2 kapatıldı (C1-C2 commit edilmemiş çalışma kopyasında; Bölüm 5.1-5.4). Güvenlik testlerinde `Skip` kalmadı. 20 Kasım 2026 çalıştırması (Docker açık): `dotnet test tests/Fraud.Security.Tests` 628 başarılı, 0 atlanan, 0 başarısız (toplam 628); `dotnet test tests/Fraud.Integration.Tests` 591 başarılı, 0 atlanan, 0 başarısız (toplam 591); `dotnet test tests/Fraud.Evaluation.Tests` 73 başarılı, 0 atlanan, 0 başarısız (toplam 73). Kalan açık riskler Bölüm 6'da bir arada.
+**Durum:** Hafta 1-2 denetiminin 11 bulgusu `00c09c7` commit'inde kapatıldı (Bölüm 5). N1-N9, M1-M6, E1-E13 ve C1-C2 kapatıldı (Bölüm 5.1-5.4). Hafta 7 sinyal denetiminde 1 bulgu açıldı (S1, Bölüm 5.5), testi `Skip = "açık: ..."` ile duruyor. 21 Kasım 2026 çalıştırması (Docker açık): `dotnet test tests/Fraud.Security.Tests` 634 başarılı, 1 atlanan, 0 başarısız (toplam 635); `dotnet test tests/Fraud.Integration.Tests` 596 başarılı, 0 atlanan, 0 başarısız (toplam 596); `dotnet test tests/Fraud.Evaluation.Tests` 73 başarılı, 0 atlanan, 0 başarısız (toplam 73); `dotnet test tests/Fraud.Signals.Tests` 60 başarılı, 0 atlanan, 0 başarısız (toplam 60). Kalan açık riskler Bölüm 6'da bir arada.
 
 ## 1. Varlıklar
 
@@ -283,6 +283,21 @@ Kapsam: `src/Fraud.Collectors/Control/` (ControlSelection, FinanceLexicon, Contr
 
 **Açık bulgular:** C1, C2 (Bölüm 5.4).
 
+### 3.15 Sinyaller (Hafta 7)
+
+Kapsam: `src/Fraud.Signals` (baseline, marka benzerliği, yeni sertifika + sözlük, sertifika patlaması, numaralı ad, `SignalCatalog`, `foreign_brands.txt`), `src/Fraud.Domain/Signals`, `Fraud.Evaluation/Running/Ablation.cs`, `Predictor` değişikliği, `SignalCommands` (`signals-brands`), `EvaluationDataLoader` ad gözlemi. Commit edilmemiş çalışma kopyası.
+
+**Gerçek tasarım (kodda doğrulandı):**
+- *Gelecek sızıntısı:* Sinyaller yalnızca `AsOfView` alır (kendi birimi, `KnownAt ≤ AsOf`, gün ızgarası). Ad gözlemi `KnownAt = MinValue` ile her zaman görünür; adın kendisi zamandan bağımsız bir özelliktir, sızıntı açmaz. `Predictor` ad gözlemini değerlendirme başlangıcından çıkarıyor (yalnızca adı olan birim son görünüm gününde puanlanır; testle). Sertifika patlaması `(AsOf − pencere, AsOf]` aralığını, yeni sertifika sinyali görünümdeki en eski sertifikayı kullanıyor; görünümden sonraki sertifika ikisinde de görünmez (testle).
+- *Eşikler:* Sinyal parametreleri (`NewCertificateDays`, `BurstWindowDays`, `BurstMinCertificates`) yapılandırmadan, 1-365 / 2-1000 aralığında. Geçmiş veri testinde ayarlanabilir; kilitli ve ileriye dönük kipte yapılandırma git'te izlenmek ve özeti kilit kaydına girmek zorunda olduğu için dondurulmuş sayılır. Ablasyon yalnızca geçmiş veri testinde çalışıyor; her satırın eşiği `EvaluationRunner` üzerinden yalnızca ayar kontrollerinde seçiliyor.
+- *Kural 4 ve 8:* `brands.txt` `data/private/signals` altında, `signals-brands` yolu sabit (`RepoContext.PrivatePath`, kullanıcı girdisi yok). Çıktılar yalnızca sayı ve SHA-256; ablasyon metni küçük hücre kuralıyla (`EvaluationReport.Format`).
+- *Girdi:* Sinyallerde regex yok. Levenshtein O(n·m); etiket DNS kuralıyla en fazla 63 karakter, belirteç sayısı küçük. 10.000 karakterlik etiket ve 200 belirteçle bile sınırlı süre (testle).
+- `tests/Fraud.Security.Tests/packages.lock.json` değişikliği kabul edildi: Yalnızca `Fraud.Signals` proje bağımlılığı (Domain + Evaluation), yeni NuGet paketi yok.
+
+**Testler:** `tests/Fraud.Security.Tests/Signals/SignalAttackTests.cs`; ayrıca `tests/Fraud.Signals.Tests`.
+
+**Açık bulgular:** S1 (Bölüm 5.5).
+
 ## 4. Bilinçli olarak kapsam dışı
 
 - Hedef sitelere doğrudan bağlantı, port taraması, TLS el sıkışması (Kural 2). Bu yüzden ilgili saldırı yüzeyi de yok.
@@ -436,9 +451,21 @@ Notlar (bulgu sayılmadı):
 - BDDK ayrıştırıcısında kapanmayan binlerce `<a>` regex'i 2 sn zaman aşımına düşürebilir; istisna komutu durdurur (kaynak TLS'li resmi site, etkisi kendi komutumuzun durması).
 - Seçimin önizlemesi: Tohum kuralı açık (`kontrol-<grup>-<anahtar>`). Kodu yerelde çalıştırıp farklı bir veritabanı kopyasında sonucu önceden görmek mümkün; bu "bilerek hile" sınıfıdır (Bölüm 3.13). C1 bundan ayrıdır: Resmi komutla, kayıt bırakarak ama yine de tekrar denenebiliyor.
 
+### 5.5 Hafta 7 sinyal denetimi (21 Kasım 2026, commit edilmemiş çalışma kopyası)
+
+Testin `Skip`'i kaldırılarak kırmızı olduğu görüldü, sonra `Skip = "açık: ..."` eklendi.
+
+| # | Önem | Durum | Yer | Özet ve saldırı senaryosu | Önerilen düzeltme | Test |
+|---|---|---|---|---|---|---|
+| S1 | Orta | Açık | `SignalCommands.LoadResourcesAsync`, `LockedRunGuard.LockedRunRecord`, `SignalConfig` | Yerli marka listesi (`data/private/signals/brands.txt`) sinyal kuralının parçası ama git dışı ve hiçbir dondurulmuş değere bağlı değil; kilitli kipte yalnızca SHA-256'sı ekrana basılıyor, kilit kaydına girmiyor. Dondurma (F) ile kilitli çalıştırma arasında listeye test penceresindeki (herkese açık) SPK kararlarından markalar eklenip kilitli test "ilk kez" çalıştırılabilir; sonuç sızıntılı olur ve kayıt bunu göstermez | Listenin SHA-256'sı dondurma commit'inde izlenen yapılandırmada sabitlensin, kilitli ve ileriye dönük kipte eşleşmezse çalışma dursun, özet kilit kaydına yazılsın. Daha basit yol: Kilitli kipte liste dosyadan değil, taahhüdü olan G1 üyelerinden yeniden üretilsin | `Locked_run_binds_the_domestic_brand_list_to_the_frozen_version` |
+
+Notlar (bulgu sayılmadı):
+- Tarihsel kipte sertifikanın `KnownAt` değeri `NotBefore`; CA'lar `NotBefore`'u saatler düzeyinde geriye alabilir, yani karar gününden sonra loglanmış bir sertifika görünebilir. Gün ızgarası bu payın çoğunu yutar; ileriye dönük kipte `observed_at` kullanılıyor (Bölüm 5.3). Bilgi.
+- Marka benzerliği G1 adlarına tanım gereği 0 veriyor; ablasyon metni bunu yazıyor.
+
 ## 6. Açık riskler
 
-Hafta 4 ağ kodunda N1-N9 kapatıldı (Bölüm 5.1). Hafta 5 izleme kodunda M1-M6 kapatıldı (Bölüm 5.2). Hafta 6 ölçüm ve taahhüt kodunda E1-E13 kapatıldı (Bölüm 5.3). Hafta 7 kontrol grubu kodunda C1-C2 kapatıldı (Bölüm 5.4). Kodda bilinen açık bulgu yok. Not: `tools` servisi (profil, port yok, `read_only`, `cap_drop ALL`) veritabanı parolasını, Radar token'ını (salt okunur repo bağlaması) ve dış ağı birlikte görür; bu, kurulum komutlarının gerektirdiği bilinçli birleşimdir ve yalnızca elle `docker compose run` ile çalışır. Aşağıdakiler ayrıca sertleştirme ve gelecek riskleridir; yayından (Hafta 11) önce kapatılmalı.
+Hafta 4 ağ kodunda N1-N9 kapatıldı (Bölüm 5.1). Hafta 5 izleme kodunda M1-M6 kapatıldı (Bölüm 5.2). Hafta 6 ölçüm ve taahhüt kodunda E1-E13 kapatıldı (Bölüm 5.3). Hafta 7 kontrol grubu kodunda C1-C2 kapatıldı (Bölüm 5.4). Hafta 7 sinyal kodunda 1 açık bulgu var (S1, Bölüm 5.5); kilitli testten önce kapatılmalı. Not: `tools` servisi (profil, port yok, `read_only`, `cap_drop ALL`) veritabanı parolasını, Radar token'ını (salt okunur repo bağlaması) ve dış ağı birlikte görür; bu, kurulum komutlarının gerektirdiği bilinçli birleşimdir ve yalnızca elle `docker compose run` ile çalışır. Aşağıdakiler ayrıca sertleştirme ve gelecek riskleridir; yayından (Hafta 11) önce kapatılmalı.
 
 | Risk | Neden önemli | Öneri | Bölüm |
 |---|---|---|---|

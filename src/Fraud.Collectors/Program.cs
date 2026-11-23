@@ -40,9 +40,12 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- port-audit-exporter                     (port-audit durum dosyasını sunar)
 //   dotnet run --project src/Fraud.Collectors -- eval-run --mode Historical|Locked --config <dosya> [--controls <csv>] [--clusters <csv>] [--commit <sha>]
 //   dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --config <dosya> --commitment <açık dosya> --opening <açıklama>
+//   dotnet run --project src/Fraud.Collectors -- signals-brands                         (G1'den data/private/signals/brands.txt; yalnızca sayı basar)
 //   dotnet run --project src/Fraud.Collectors -- control-fetch-g1                       (tek istek, yalnızca www.bddk.org.tr)
 //   dotnet run --project src/Fraud.Collectors -- control-build-g1 --input <kaydedilmiş BDDK HTML>
-//   dotnet run --project src/Fraud.Collectors -- control-build-g2 [--token-file <dosya>]   (Tranco kimliği: docs/evaluation/control_sources.json)
+//   dotnet run --project src/Fraud.Collectors -- control-fetch-g2-wikidata              (tek sorgu, yalnızca query.wikidata.org; en çok 3 deneme)
+//   dotnet run --project src/Fraud.Collectors -- control-build-g2-wikidata --input <ham cevap>   (ağ yok)
+//   (control-build-g2 Radar yolu kullanımdan kalktı.)
 //   dotnet run --project src/Fraud.Collectors -- control-build-g4a
 //   dotnet run --project src/Fraud.Collectors -- control-build-g3 --week yyyy-Www [--max-queries 600]
 //   dotnet run --project src/Fraud.Collectors -- control-build-g4b --week yyyy-Www [--max-queries 600]
@@ -62,15 +65,15 @@ const string Usage =
     "collect-internetdb [--force true] | dns-compare [--day YYYY-AA-GG] | worker | quality-report | ct-follow | migrate | " +
     "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true] | " +
     "archive-sample [--count N] [--seed <metin>] [--out <klasör>] | port-audit [--once true] | port-audit-exporter | " +
-    "eval-run --mode <kip> --config <dosya> | commit-create | commit-prove | commit-verify | " +
-    "control-fetch-g1 | control-build-g1 | control-build-g2 | control-build-g3 | control-build-g4a | control-build-g4b | control-g3a-trial>";
+    "eval-run --mode <kip> --config <dosya> | signals-brands | commit-create | commit-prove | commit-verify | " +
+    "control-fetch-g1 | control-build-g1 | control-fetch-g2-wikidata | control-build-g2-wikidata | control-build-g3 | control-build-g4a | control-build-g4b | control-g3a-trial>";
 
 var command = args.Length > 0 ? args[0] : string.Empty;
 if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"
     or "ct-follow" or "ct-sample" or "migrate" or "archive-sample"
     or "collect-dns" or "collect-ripestat" or "collect-internetdb" or "dns-compare" or "port-audit" or "port-audit-exporter"
-    or "eval-run" or "commit-create" or "commit-prove" or "commit-verify"
-    or "control-fetch-g1" or "control-build-g1" or "control-build-g2" or "control-build-g3" or "control-build-g4a"
+    or "eval-run" or "signals-brands" or "commit-create" or "commit-prove" or "commit-verify"
+    or "control-fetch-g1" or "control-build-g1" or "control-build-g2" or "control-fetch-g2-wikidata" or "control-build-g2-wikidata" or "control-build-g3" or "control-build-g4a"
     or "control-build-g4b" or "control-g3a-trial"))
 {
     await Console.Error.WriteLineAsync(Usage).ConfigureAwait(false);
@@ -283,9 +286,21 @@ switch (command)
             RepoContext.Find(gitPath: builder.Configuration["Git:Path"])).ConfigureAwait(false);
     }
 
+    case "signals-brands":
+    {
+        await using var scope = host.Services.CreateAsyncScope();
+        return await SignalCommands.BuildBrandsAsync(
+            scope.ServiceProvider.GetRequiredService<FraudDbContext>(),
+            RepoContext.Find(gitPath: builder.Configuration["Git:Path"]),
+            Console.Out,
+            stop.Token).ConfigureAwait(false);
+    }
+
     case "control-fetch-g1":
     case "control-build-g1":
     case "control-build-g2":
+    case "control-fetch-g2-wikidata":
+    case "control-build-g2-wikidata":
     case "control-build-g3":
     case "control-build-g4a":
     case "control-build-g4b":

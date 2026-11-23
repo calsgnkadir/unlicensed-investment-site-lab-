@@ -1,0 +1,43 @@
+# Yabancı finans kurumu marka belirteçleri (marka benzerliği sinyali, Hafta 7). Sürüm v1, düzeltildi 2026-11-23.
+#
+# Kaynak: FSB 2025 G-SIB listesi (27 Kasım 2025), erişim 2026-11-21.
+# https://www.fsb.org/2025/11/2025-list-of-global-systemically-important-banks-g-sibs/ (29 banka).
+# Doğrulama ve gerekçe: docs/research/YABANCI_MARKA_DOGRULAMA.md. Kova 1 adları ikincil kaynaktan; FSB PDF'inin ek tablosuyla
+# bir kez elle karşılaştırılması önerilir. Liste hiç kullanılmadan düzeltildi (citibank çıktı; bankofcommunications,
+# mitsubishiufj, industrialandcommercialbankofchina eklendi). Bu dosya donmuştur.
+#
+# Kurallar:
+# - Her satır bir belirteç: markanın alan adlarında kullanılan küçük harf, ASCII, tiresiz yazımı.
+# - Yalnızca resmi listedeki adlar (alt markalar, ör. citibank, alınmaz).
+# - 5 karakterden kısa belirteçler (ör. hsbc, ing, ubs, bnp, icbc, mufg) ALINMADI: Alt dize ve düzenleme uzaklığı
+#   olarak çok sayıda ilgisiz ada takılır. Bu, kısa markalı taklitleri kaçırır (bilinen sınır).
+# - Bir ad başka bir adın alt dizesi olabilir (bankofchina, agriculturalbankofchina): eşleştirici en uzun eşleşmeyi seçer.
+# - Kripto borsaları ve aracı kurumlar listede YOK: G-SIB listesi yalnızca bankaları kapsar. Eklenirse ayrı bir karar ve
+#   kaynak gerekir (DECISIONS).
+# - Gerçek kurum adlarıdır; bu kurumlar suçlanmıyor, yalnızca taklit edilebilecek markalar olarak kullanılıyor (Kural 4).
+jpmorgan
+citigroup
+bankofamerica
+bankofchina
+barclays
+bnpparibas
+deutschebank
+goldmansachs
+morganstanley
+santander
+societegenerale
+standardchartered
+statestreet
+wellsfargo
+creditagricole
+mizuho
+sumitomomitsui
+bnymellon
+royalbankofcanada
+torontodominion
+agriculturalbankofchina
+chinaconstructionbank
+groupebpce
+bankofcommunications
+mitsubishiufj
+industrialandcommercialbankofchina

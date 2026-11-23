@@ -1,0 +1,23 @@
+#tohum: kontrol-g2-wikidata-2026-11-21
+# G2 kontrol grubu sorgusu (KONTROL_GRUBU_YONTEMI.md, Değişiklik kaydı 2026-11-21; G2_WIKIDATA_PLANI.md 2.2).
+# Bu dosya DONMUŞTUR: Sorgu çalıştırılmadan önce commit edilir, SHA-256'sı deneme kaydına ve manifeste yazılır.
+# Dosyanın tamamı (yorumlar dahil) sorgu olarak gönderilir; tohum satırı da özetin içindedir.
+# Kapsam: konusu iktisat (Q8134) ya da finans (Q43015) olan gazete (Q11032) ve dergiler (Q41298) ile iş gazeteleri
+# (Q106651372); resmi web sitesi (P856). Eğitim kolu çıkarıldı (kimlik doğrulanamadı). Alt sınıf zinciri (P279*) yok.
+# Türkiye (P17 = Q43) süzgeç değil, etikettir (?tr).
+SELECT DISTINCT ?item ?site ?tr WHERE {
+  {
+    ?item wdt:P31 wd:Q106651372 .
+  } UNION {
+    VALUES ?cls { wd:Q11032 wd:Q41298 }
+    ?item wdt:P31 ?cls .
+    VALUES ?topic { wd:Q8134 wd:Q43015 }
+    ?item wdt:P921 ?topic .
+  }
+  ?item p:P856 ?st .
+  ?st ps:P856 ?site .
+  ?st wikibase:rank ?rank .
+  FILTER(?rank != wikibase:DeprecatedRank)
+  FILTER NOT EXISTS { ?st pq:P582 ?ended }
+  BIND(EXISTS { ?item wdt:P17 wd:Q43 } AS ?tr)
+}

@@ -10,3 +10,6 @@ docs/research/finans_sozlugu.txt text eol=lf
 
 # Taahhüt dosyaları bayt bayt korunur (zaman damgası isteği bu baytların SHA-256 özetine bağlı).
 docs/evaluation/commitments/** -text
+
+# G2 Wikidata sorgusu dondurulmuş dosya: satır sonu her platformda LF (SHA-256 her makinede aynı olsun).
+docs/evaluation/g2_wikidata_query.rq text eol=lf

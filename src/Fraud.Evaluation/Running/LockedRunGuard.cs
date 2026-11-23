@@ -3,7 +3,10 @@ using System.Text.Json;
 namespace Fraud.Evaluation.Running;
 
 /// <summary>Kilitli testin bir çalıştırma kaydı. Alan adı yok; yalnızca yapılandırma özeti, commit ve zaman.</summary>
-public sealed record LockedRunRecord(DateTimeOffset StartedAt, string ConfigSha256, string Commit, bool IsRerun, string? RerunReason);
+/// <param name="BrandListSha256">S1: Kilitli çalıştırmada kullanılan yerli marka listesinin SHA-256'sı (G1 taahhüdünden yeniden
+/// üretilmiş, kurallı biçim). Marka sinyali kullanılmadıysa <c>null</c>.</param>
+public sealed record LockedRunRecord(
+    DateTimeOffset StartedAt, string ConfigSha256, string Commit, bool IsRerun, string? RerunReason, string? BrandListSha256 = null);
 
 /// <summary>
 /// Kilitli teste giriş bileti. Yalnızca <see cref="LockedRunGuard.Acquire"/> üretir; <see cref="EvaluationRunner"/>
@@ -55,7 +58,8 @@ public static class LockedRunGuard
     /// <c>--allow-rerun</c> ile alınan bilet "ilk" değil "yeniden çalıştırma" olur; ilk çalıştırma eski kayıttaki kalır.
     /// </summary>
     public static LockedRunTicket AcquireWithLegacy(
-        string lockFile, string legacyLockFile, string configSha256, string commit, DateTimeOffset now, bool allowRerun = false, string? rerunReason = null)
+        string lockFile, string legacyLockFile, string configSha256, string commit, DateTimeOffset now, bool allowRerun = false, string? rerunReason = null,
+        string? brandListSha256 = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(lockFile);
         ArgumentException.ThrowIfNullOrWhiteSpace(legacyLockFile);
@@ -65,7 +69,7 @@ public static class LockedRunGuard
             File.Copy(legacyLockFile, lockFile, overwrite: false);
         }
 
-        return Acquire(lockFile, configSha256, commit, now, allowRerun, rerunReason);
+        return Acquire(lockFile, configSha256, commit, now, allowRerun, rerunReason, brandListSha256);
     }
 
     /// <summary>Tam git commit kimliği: 40 küçük harf onaltılık karakter (SHA-1).</summary>
@@ -73,7 +77,8 @@ public static class LockedRunGuard
         value is { Length: 40 } && value.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f');
 
     public static LockedRunTicket Acquire(
-        string lockFile, string configSha256, string commit, DateTimeOffset now, bool allowRerun = false, string? rerunReason = null)
+        string lockFile, string configSha256, string commit, DateTimeOffset now, bool allowRerun = false, string? rerunReason = null,
+        string? brandListSha256 = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(lockFile);
         ArgumentException.ThrowIfNullOrWhiteSpace(configSha256);
@@ -87,7 +92,7 @@ public static class LockedRunGuard
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(lockFile))!);
 
-        var first = new LockedRunRecord(now, configSha256, commit, IsRerun: false, RerunReason: null);
+        var first = new LockedRunRecord(now, configSha256, commit, IsRerun: false, RerunReason: null, brandListSha256);
         try
         {
             using var stream = new FileStream(lockFile, FileMode.CreateNew, FileAccess.Write, FileShare.None);
@@ -110,7 +115,7 @@ public static class LockedRunGuard
                 + " rapora 'YENİDEN ÇALIŞTIRMA' yazılır.");
         }
 
-        var rerun = new LockedRunRecord(now, configSha256, commit, IsRerun: true, RerunReason: rerunReason);
+        var rerun = new LockedRunRecord(now, configSha256, commit, IsRerun: true, RerunReason: rerunReason, brandListSha256);
         runs.Add(rerun);
         File.WriteAllText(lockFile, JsonSerializer.Serialize(runs, Json));
         return new LockedRunTicket(rerun, original);

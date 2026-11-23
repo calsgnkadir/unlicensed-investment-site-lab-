@@ -109,6 +109,7 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
             {
                 t.HasCheckConstraint("ck_control_members_frame", "frame IS NULL OR \"group\" IN ('G3', 'G4b')");
                 t.HasCheckConstraint("ck_control_members_seed", "length(btrim(seed)) > 0");
+                t.HasCheckConstraint("ck_control_members_turkey", "turkey_linked IS NULL OR \"group\" = 'G2'");
             });
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").UseIdentityAlwaysColumn();
@@ -123,6 +124,7 @@ public sealed class FraudDbContext(DbContextOptions<FraudDbContext> options) : D
             e.Property(x => x.FirstLoggedAt).HasColumnName("first_logged_at");
             e.Property(x => x.FirstCertificateAt).HasColumnName("first_certificate_at");
             e.Property(x => x.DictionarySubset).HasColumnName("dictionary_subset").HasMaxLength(16);
+            e.Property(x => x.TurkeyLinked).HasColumnName("turkey_linked");
 
             e.HasOne(x => x.Domain)
                 .WithMany()

@@ -8,12 +8,14 @@ COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/Fraud.Domain/Fraud.Domain.csproj src/Fraud.Domain/packages.lock.json src/Fraud.Domain/
 COPY src/Fraud.Infrastructure/Fraud.Infrastructure.csproj src/Fraud.Infrastructure/packages.lock.json src/Fraud.Infrastructure/
 COPY src/Fraud.Evaluation/Fraud.Evaluation.csproj src/Fraud.Evaluation/packages.lock.json src/Fraud.Evaluation/
+COPY src/Fraud.Signals/Fraud.Signals.csproj src/Fraud.Signals/packages.lock.json src/Fraud.Signals/
 COPY src/Fraud.Collectors/Fraud.Collectors.csproj src/Fraud.Collectors/packages.lock.json src/Fraud.Collectors/
 RUN dotnet restore src/Fraud.Collectors/Fraud.Collectors.csproj --locked-mode
 
 COPY src/Fraud.Domain/ src/Fraud.Domain/
 COPY src/Fraud.Infrastructure/ src/Fraud.Infrastructure/
 COPY src/Fraud.Evaluation/ src/Fraud.Evaluation/
+COPY src/Fraud.Signals/ src/Fraud.Signals/
 COPY src/Fraud.Collectors/ src/Fraud.Collectors/
 RUN dotnet publish src/Fraud.Collectors/Fraud.Collectors.csproj -c Release -o /app --no-restore
 

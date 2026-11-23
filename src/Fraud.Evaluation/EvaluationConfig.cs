@@ -43,12 +43,61 @@ public sealed class BulletinRange
     public bool Contains(BulletinNumber bulletin) => bulletin.IsBetween(BulletinNumber.Parse(From), BulletinNumber.Parse(To));
 }
 
-/// <summary>Sinyal seçimi. Hafta 6'da yalnızca sahte sinyal var.</summary>
+/// <summary>Sinyal seçimi (Hafta 7). Sinyal nesneleri Fraud.Signals.SignalCatalog'da kurulur; burada yalnızca ad ve parametre.</summary>
 public sealed class SignalConfig
 {
+    /// <summary>Bilinen sinyal adları (Hafta 7). "sum" parçaların ağırlıksız toplamıdır (Fraud.Evaluation.Running.SumSignal).</summary>
+    public static readonly IReadOnlySet<string> KnownNames = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "random", "baseline", "brand", "new-cert-lexicon", "cert-burst", "numbered", "sum",
+    };
+
+    /// <summary>Çalıştırılacak sinyal.</summary>
     public string Name { get; set; } = "random";
 
     public string Seed { get; set; } = "random-2026-11-15";
+
+    /// <summary>"sum" sinyalinin parçaları ve ablasyonun sinyal kümesi.</summary>
+    public IReadOnlyList<string> Parts { get; set; } = ["baseline", "brand", "new-cert-lexicon", "cert-burst"];
+
+    /// <summary>Doğruysa ablasyon: her parça tek başına, hepsinin toplamı ve her biri çıkarılmış toplam ayrı ayrı ölçülür.</summary>
+    public bool Ablation { get; set; }
+
+    /// <summary>Yeni sertifika sinyali: ilk sertifika görünüm anından en çok bu kadar gün önce. Sabit varsayılan, ayarlanmadı.</summary>
+    public int NewCertificateDays { get; set; } = 28;
+
+    /// <summary>Sertifika patlaması: son kaç günde.</summary>
+    public int BurstWindowDays { get; set; } = 30;
+
+    /// <summary>Sertifika patlaması: o pencerede en az kaç farklı sertifika.</summary>
+    public int BurstMinCertificates { get; set; } = 5;
+
+    /// <summary>
+    /// S1: Yerli marka listesinin (kurallı biçim) SHA-256'sı, dondurma commit'inde sabitlenir. Kilitli ve ileriye dönük kipte liste
+    /// dosyadan okunmaz, G1 taahhüdünden yeniden üretilir; özeti bununla aynı değilse çalışma kilitten ÖNCE durur.
+    /// <c>signals-brands</c> bu değeri basar. Geçmiş veri testinde zorunlu değil.
+    /// </summary>
+    public string? DomesticBrandsSha256 { get; set; }
+
+    /// <summary>Seçilen sinyal ya da toplamın parçaları marka sinyalini içeriyor mu.</summary>
+    public bool UsesBrand => Name == "brand" || (Name == "sum" && (Parts ?? []).Contains("brand"));
+
+    public void Validate()
+    {
+        var parts = Parts ?? [];
+        var badName = !KnownNames.Contains(Name);
+        // "sum" ve "random" parça olamaz: toplam iç içe girmesin, sahte sinyal gerçeklerle karışmasın.
+        var badParts = parts.Any(p => !KnownNames.Contains(p) || p is "sum" or "random")
+            || parts.Distinct(StringComparer.Ordinal).Count() != parts.Count;
+        var needsParts = Name == "sum" || Ablation;
+        var badNumbers = NewCertificateDays is < 1 or > 365 || BurstWindowDays is < 1 or > 365 || BurstMinCertificates is < 2 or > 1000;
+        var badSha = DomesticBrandsSha256 is not null
+            && (DomesticBrandsSha256.Length != 64 || !DomesticBrandsSha256.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f'));
+        if (badName || badParts || (needsParts && parts.Count == 0) || badNumbers || badSha || string.IsNullOrWhiteSpace(Seed))
+        {
+            throw new InvalidOperationException("Sinyal yapılandırması geçersiz.");
+        }
+    }
 }
 
 /// <summary>
@@ -101,8 +150,12 @@ public sealed class EvaluationConfig
     /// <summary>Eşik, ayar kontrollerinde bu yanlış alarm oranına göre seçilir. Varsayılan %1 (onay bekliyor).</summary>
     public double TargetFalseAlarmRate { get; set; } = 0.01;
 
-    /// <summary>Eşiğin seçildiği kontrol grupları. Varsayılan G3 + G4 (onay bekliyor). G1 kolay negatiftir, girmez.</summary>
-    public IReadOnlyList<SubjectGroup> CalibrationGroups { get; set; } = [SubjectGroup.ControlHardNegative, SubjectGroup.ControlRandom];
+    /// <summary>
+    /// Eşiğin seçildiği kontrol grupları. YALNIZCA G4 (G4a + G4b, <see cref="SubjectGroup.ControlRandom"/>): DECISIONS.md,
+    /// "2026-11-21: Eşik seçimi yalnızca tarafsız kontrollerden". G3 ve Çerçeve K bazı sinyallerde tanım gereği 1 alır; eşiğe
+    /// girselerdi sinyali ölçmeden susturabilirlerdi. Alan geriye uyum için duruyor; başka bir değer <see cref="Validate"/>'de reddedilir.
+    /// </summary>
+    public IReadOnlyList<SubjectGroup> CalibrationGroups { get; set; } = [SubjectGroup.ControlRandom];
 
     /// <summary>Bootstrap tekrar sayısı. Varsayılan 2000 (onay bekliyor).</summary>
     public int BootstrapIterations { get; set; } = 2000;
@@ -164,6 +217,8 @@ public sealed class EvaluationConfig
 
     public void Validate()
     {
+        ArgumentNullException.ThrowIfNull(Signal);
+        Signal.Validate();
         _ = BulletinNumber.Parse(TuningBulletins.From);
         _ = BulletinNumber.Parse(HistoricalBulletins.To);
         if (BulletinNumber.Parse(TuningBulletins.To) >= BulletinNumber.Parse(HistoricalBulletins.From))
@@ -184,8 +239,7 @@ public sealed class EvaluationConfig
             || !(CoverageWarningGap > 0 && CoverageWarningGap < 1)
             || DailyNewDomains is < 0
             || string.IsNullOrWhiteSpace(Seed) || Seed.Length > 200
-            || CalibrationGroups.Count == 0 || CalibrationGroups.Contains(SubjectGroup.Positive)
-            || CalibrationGroups.Any(g => !Enum.IsDefined(g))
+            || CalibrationGroups is not [SubjectGroup.ControlRandom]
             || !Enum.IsDefined(ControlReference))
         {
             throw new InvalidOperationException("Yapılandırma değerleri geçersiz ya da sınır dışında.");
@@ -209,10 +263,18 @@ public sealed class EvaluationConfig
             throw new InvalidOperationException("İleriye dönük test için timestampAuthorityRootFile (TSA kök sertifikası) gerekli.");
         }
 
-        if (Signal.Name != "random")
+        // Bilinmeyen sinyal adı ya da geçersiz parametre kilidi harcamadan reddedilir.
+        Signal.Validate();
+        if (Signal.Ablation && mode != EvaluationMode.Historical)
         {
-            // Hafta 6'da yalnızca sahte sinyal var. Bilinmeyen sinyal adı kilidi harcamadan reddedilir.
-            throw new InvalidOperationException("Bilinmeyen sinyal.");
+            // Ablasyon bir keşif aracıdır: Kilitli ya da ileriye dönük testte tek, dondurulmuş sinyal çalışır.
+            throw new InvalidOperationException("Ablasyon yalnızca geçmiş veri testinde çalışır.");
+        }
+
+        if (mode != EvaluationMode.Historical && Signal.UsesBrand && Signal.DomesticBrandsSha256 is null)
+        {
+            // S1: Liste sinyal kuralının parçasıdır; dondurulmuş özeti olmadan kilitli test başlamaz.
+            throw new InvalidOperationException("Marka sinyali kilitli/ileriye dönük testte signal.domesticBrandsSha256 ister (signals-brands basar).");
         }
     }
 }

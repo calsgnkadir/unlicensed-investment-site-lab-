@@ -1,6 +1,6 @@
 # Fraud.Evaluation (Hafta 6 ölçüm altyapısı)
 
-Önce sınav, sonra model. Bu proje sinyal içermez. Sinyallerin nasıl ölçüleceğini sabitler. Yalnızca `Fraud.Domain`'e bağlıdır. Veritabanından yükleme ve komut satırı `Fraud.Collectors` içindedir (`Evaluation/`).
+Önce sınav, sonra model. Bu proje gerçek sinyal içermez (yalnızca sahte `random`); Hafta 7 sinyalleri `Fraud.Signals` içindedir. Burada sinyallerin nasıl ölçüleceği, toplam sinyali (`SumSignal`) ve ablasyon (`Running/Ablation.cs`) durur. Yalnızca `Fraud.Domain`'e bağlıdır. Veritabanından yükleme ve komut satırı `Fraud.Collectors` içindedir (`Evaluation/`).
 
 Bu bir yatırım tavsiyesi değildir. "Pozitif", "SPK erişim engeli listesinde" demektir, "dolandırıcı" demek değildir.
 

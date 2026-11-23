@@ -479,6 +479,7 @@
           "Fraud.Domain": "[1.0.0, )",
           "Fraud.Evaluation": "[1.0.0, )",
           "Fraud.Infrastructure": "[1.0.0, )",
+          "Fraud.Signals": "[1.0.0, )",
           "Microsoft.Extensions.Hosting": "[10.0.14, )",
           "Microsoft.Extensions.Http": "[10.0.14, )",
           "Polly.Core": "[8.9.1, )",
@@ -504,6 +505,13 @@
           "OpenTelemetry": "[1.21.0, )",
           "OpenTelemetry.Exporter.Prometheus.HttpListener": "[1.21.0-beta.1, )",
           "OpenTelemetry.Extensions.Hosting": "[1.21.0, )"
+        }
+      },
+      "fraud.signals": {
+        "type": "Project",
+        "dependencies": {
+          "Fraud.Domain": "[1.0.0, )",
+          "Fraud.Evaluation": "[1.0.0, )"
         }
       },
       "CsvHelper": {

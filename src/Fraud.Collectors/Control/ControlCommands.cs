@@ -10,6 +10,8 @@ using Fraud.Domain.DomainNames;
 using Fraud.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
+using Fraud.Domain.Signals;
+
 namespace Fraud.Collectors.Control;
 
 /// <summary>Kontrol listesi komutlarının bağımlılıkları. Testler sahte kaynaklarla kurar; ağ yok.</summary>
@@ -40,6 +42,9 @@ public sealed class ControlContext
     /// Sabitlenmiş kaynaklar (C1). Boşsa docs/evaluation/control_sources.json git denetimleriyle okunur. Yalnızca testler verir.
     /// </summary>
     public ControlSources? PinnedSources { get; init; }
+
+    /// <summary>Donmuş G2 sorgu dosyasının baytları. Boşsa docs/evaluation/g2_wikidata_query.rq git denetimleriyle okunur. Yalnızca testler verir.</summary>
+    public byte[]? PinnedG2Query { get; init; }
 
     /// <summary>Gizli çıktı klasörü: depo kökünde data/private/control.</summary>
     public string ControlDirectory => Path.GetDirectoryName(Repo.PrivatePath("data/private/control/.liste"))!;
@@ -137,6 +142,8 @@ public static class ControlCommands
     // ---- G2 ----
 
     /// <summary>
+    /// KULLANIMDAN KALKTI (Değişiklik kaydı 2026-11-21): Radar önkoşulu geçmedi, G2 Wikidata ile kurulur
+    /// (<see cref="G2WikidataCommands"/>). Kod ve testleri kayıt için duruyor; komut satırı bu yola artık gelmez.
     /// <c>control-build-g2</c>: Liste kimliği yalnızca sabitlenmiş dosyadan (C1). Önce %80 önkoşul denemesi (ilk 1.000 sıradan
     /// tohumlu 100), geçerse ilk 100.000 sıradan tohumlu sırayla Radar'a sorup kategori kümesine uyan ilk 300.
     /// </summary>
@@ -525,7 +532,7 @@ public static class ControlCommands
 
     // ---- ortak ----
 
-    private static async Task<bool> RefuseIfBuiltAsync(ControlContext ctx, ControlGroup group, string weekKey, CancellationToken cancellationToken)
+    internal static async Task<bool> RefuseIfBuiltAsync(ControlContext ctx, ControlGroup group, string weekKey, CancellationToken cancellationToken)
     {
         if (!await new ControlStore(ctx.Db, ctx.Full).IsBuiltAsync(group, weekKey, cancellationToken).ConfigureAwait(false))
         {
@@ -536,7 +543,7 @@ public static class ControlCommands
         return true;
     }
 
-    private static async Task<ControlEligibility> EligibilityAsync(ControlContext ctx, CancellationToken cancellationToken)
+    internal static async Task<ControlEligibility> EligibilityAsync(ControlContext ctx, CancellationToken cancellationToken)
     {
         var store = new ControlStore(ctx.Db, ctx.Full);
         return new ControlEligibility(
@@ -596,9 +603,10 @@ public static class ControlCommands
     /// <summary>
     /// Seçimi bitirir: liste dosyası ve taahhüt (seçim boş değilse), sonra üyeler ve kurma kaydı tek işlemde. Ekrana sayılar.
     /// </summary>
-    private static async Task<int> FinishAsync(
+    /// <param name="extra">Manifeste eklenecek alan adsız bilgiler (ör. sorgu ve cevap SHA-256'sı).</param>
+    internal static async Task<int> FinishAsync(
         ControlContext ctx, ControlGroup group, string weekKey, string seed, string? listId, List<SelectedMember> selected,
-        IReadOnlyDictionary<string, int> counts, CancellationToken cancellationToken)
+        IReadOnlyDictionary<string, int> counts, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? extra = null)
     {
         var name = "kontrol-" + group.ToString().ToLowerInvariant() + (weekKey == ControlBuild.OneShot ? string.Empty : "-" + weekKey.ToLowerInvariant());
         string? commitmentId = null;
@@ -628,6 +636,11 @@ public static class ControlCommands
             ["group"] = group.ToString(), ["week"] = weekKey, ["seed"] = seed, ["source_list_id"] = listId, ["commitment"] = commitmentId,
             ["selected"] = selected.Count, ["counts"] = counts, ["built_at"] = ctx.Time.GetUtcNow(),
         };
+        foreach (var (key, value) in extra ?? new Dictionary<string, string>())
+        {
+            manifest[key] = value;
+        }
+
         await WriteNewAsync(Path.Combine(ctx.ControlDirectory, name + ".manifest.json"), JsonSerializer.SerializeToUtf8Bytes(manifest, Json), cancellationToken)
             .ConfigureAwait(false);
 
@@ -640,7 +653,7 @@ public static class ControlCommands
         return 0;
     }
 
-    private static Dictionary<string, int> Merge(IReadOnlyDictionary<string, int> a, Dictionary<string, int> b)
+    internal static Dictionary<string, int> Merge(IReadOnlyDictionary<string, int> a, Dictionary<string, int> b)
     {
         var result = new Dictionary<string, int>(a, StringComparer.Ordinal);
         foreach (var (k, v) in b)
@@ -651,10 +664,10 @@ public static class ControlCommands
         return result;
     }
 
-    private static string Sha(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
+    internal static string Sha(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     /// <summary>Var olan dosyanın üzerine yazmaz (CreateNew).</summary>
-    private static async Task WriteNewAsync(string path, byte[] content, CancellationToken cancellationToken)
+    internal static async Task WriteNewAsync(string path, byte[] content, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);

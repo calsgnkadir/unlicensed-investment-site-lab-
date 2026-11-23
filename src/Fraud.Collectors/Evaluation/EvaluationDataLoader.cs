@@ -84,7 +84,7 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
 
         var certificates = await db.CertificateDomains
             .Where(cd => domainIds.Contains(cd.DomainId))
-            .Select(cd => new { cd.DomainId, cd.Certificate.NotBefore, cd.Certificate.ObservedAt })
+            .Select(cd => new { cd.DomainId, cd.Certificate.IssuerName, cd.Certificate.SerialNumber, cd.Certificate.NotBefore, cd.Certificate.ObservedAt })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         var archives = await db.ArchiveSnapshots
             .Where(a => domainIds.Contains(a.DomainId))
@@ -96,8 +96,12 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
         var observations = new List<Observation>();
+        // Value = verilişin kimliği (DECISIONS 2026-11-21): (yayıncı, seri numarası) çifti. Ön sertifika ile son sertifika crt.sh'te
+        // iki ayrı kayıttır ama aynı verilişi anlatır; aynı seri ve yayıncıyı taşırlar, patlama sinyali onları bir kez sayar. Aynı
+        // sertifika birden çok domains satırına bağlıysa da tek sayılır. Değer özettir: yayıncı metni gözleme girmez.
         observations.AddRange(certificates.Select(c => new Observation(
-            IdOf(nameOfDomainId[c.DomainId]), ObservationKinds.Certificate, KnownAtPolicy.Certificate(c.NotBefore, c.ObservedAt, prospective), c.ObservedAt)));
+            IdOf(nameOfDomainId[c.DomainId]), ObservationKinds.Certificate, KnownAtPolicy.Certificate(c.NotBefore, c.ObservedAt, prospective), c.ObservedAt,
+            IssuanceId(c.IssuerName, c.SerialNumber))));
         observations.AddRange(archives.Select(a => new Observation(
             IdOf(nameOfDomainId[a.DomainId]), ObservationKinds.Archive,
             KnownAtPolicy.Archive(a.CapturedAt, a.ObservedAt, archiveDelay, prospective), a.ObservedAt)));
@@ -122,6 +126,7 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
             subjects.Add(new Subject(
                 IdOf(a.RegistrableDomain), SubjectGroup.Positive, subgroup, decided, BulletinNumber.Parse(a.BulletinNumber),
                 ClusterOf(a.RegistrableDomain, clusters), firstCertificateAt: first));
+            observations.Add(NameObservation(a.RegistrableDomain));
         }
 
         // Aynı ad iki kez yazıldıysa ilk satır geçerli (aynı birim iki kez sayılmasın).
@@ -134,11 +139,32 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
                 Week = c.Week,
                 CommitmentId = c.CommitmentId,
             });
+            observations.Add(NameObservation(c.Domain));
         }
 
         var counts = new EvaluationLoadCounts(earliest.Count, controlRows.Count, rejected, overlapping, certificates.Count, archives.Count, dns.Count);
         return new EvaluationData(subjects, observations, counts);
     }
+
+    /// <summary>
+    /// Bir verilişin kimliği: <c>"c-" + SHA-256(yayıncı + "|" + seri)</c> ilk 16 onaltılık karakter. Seri büyük/küçük harf, iki nokta
+    /// ve baştaki sıfırlardan bağımsızdır (aynı seri farklı yazılmış olabilir).
+    /// </summary>
+    public static string IssuanceId(string issuerName, string serialNumber)
+    {
+        ArgumentNullException.ThrowIfNull(issuerName);
+        ArgumentNullException.ThrowIfNull(serialNumber);
+        var serial = serialNumber.Replace(":", string.Empty, StringComparison.Ordinal).Trim().ToLowerInvariant().TrimStart('0');
+        return "c-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(issuerName.Trim() + "|" + serial)))[..16];
+    }
+
+    /// <summary>
+    /// Ad gözlemi (Hafta 7): Ad sinyalleri (baseline, marka, numaralı ad) adı yalnızca buradan görür. Zaman taşımaz:
+    /// <c>KnownAt = MinValue</c>, yani her görünümde vardır ve gelecek bilgisi değildir. Değer yalnızca bellekte durur;
+    /// rapor ve metin çıktıları gözlem değerini basmaz (Kural 4).
+    /// </summary>
+    private Observation NameObservation(string registrableDomain) =>
+        new(IdOf(registrableDomain), ObservationKinds.Name, DateTimeOffset.MinValue, DateTimeOffset.MinValue, registrableDomain);
 
     /// <summary>Kimlik anahtarı: yoksa 32 rastgele bayt üretilir. Yalnızca data/private altında tutulur.</summary>
     public static byte[] LoadOrCreateKey(string path)
