@@ -1,0 +1,8 @@
+{
+  "Version": 1,
+  "CreatedAt": "2026-11-23T20:57:53.3188601+00:00",
+  "Count": 5,
+  "Root": "9afb3bd32452cb2e0ac192c81b7977b077756c7200467d0d07d1132c3cb4a64f",
+  "Previous": null,
+  "LeafRule": "c = SHA-256(salt32 || UTF-8(record)); leaf = SHA-256(0x00 || c); node = SHA-256(0x01 || left || right); RFC 6962 tree; leaves ordered by c ascending"
+}

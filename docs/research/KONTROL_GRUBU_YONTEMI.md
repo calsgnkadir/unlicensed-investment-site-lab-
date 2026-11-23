@@ -498,6 +498,11 @@ Kadircan bu bölümdeki 10 kararı aşağıdaki şekliyle onayladı. Belge, bu b
 
 ## Değişiklik kaydı
 
+- 2026-11-23 (G3 hafta 2026-W47 kurulum sonucu, sinyal sonucu görülmeden):
+  - **Seçilen:** Çerçeve N'den 5, çerçeve K'dan 0 alan adı (haftalık kota 60). Taahhüt dosyası: `docs/evaluation/commitments/kontrol-g3-2026-w47.json`.
+  - **Sayılar:** 600 crt.sh sorgusu yapıldı ve sorgu sınırı doldu. 216 sorgu hata verdi (E20), 344 ad yeni değildi (ilk sertifika 28 günden eski), 35 adın crt.sh kaydı yoktu. PSL özel bölümü nedeniyle elenen: K'da 10.121, N'de 104.182. Sözlükte terim geçmeyen: K'da 108.279, N'de 256.927. Başka grupta olduğu için elenen (E02): 7.
+  - **Not:** Kural değiştirilmedi. Bu hızla G3 1.000 hedefinin çok altında kalır. Bölüm 10.1'in 3. maddesine göre raporda ulaşılan boyut yazılır. crt.sh hata oranı (%36) ayrı bir sorun olarak izleniyor.
+
 - 2026-11-21 (G2 için B seçeneği; Wikidata sorgusu çalıştırılmadan yazıldı):
   - **Radar denemesinin incelenmesi:** Kodda kullanılan uç nokta ve cevapta kategorinin okunduğu yol, Radar'ın resmi belgesiyle aynı. Denemede hiç hata alınmadı. Bu yüzden 14/100 sonucu büyük olasılıkla Radar'ın kapsamasının gerçekten düşük olmasından kaynaklanıyor. Ancak ham cevaplar saklanmadığı için bunun bir uygulama hatası olmadığı kesin değil. Deneme yine de kullanılmış sayılır.
   - **Plan:** G2, [G2_WIKIDATA_PLANI.md](G2_WIKIDATA_PLANI.md) belgesindeki sorguyla kurulur. Kapsam: konusu iktisat veya finans olan haber kuruluşları (iş gazetesi, gazete ve dergi) ve bu kuruluşların resmi web sitesi (P856). Bitiş tarihi geçmiş ya da kullanımdan kalkmış P856 değerleri elenir.
