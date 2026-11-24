@@ -420,6 +420,22 @@ public sealed class EvaluationLoaderTests(PostgresFixture postgres) : IDisposabl
         Assert.Equal(Subgroup.None, EvaluationDataLoader.FrameOf(null));
     }
 
+    /// <summary>
+    /// DECISIONS 2026-11-24: Tanınmayan kontrol grubu G4'e (eşik kümesine) sessizce düşmez, hata verir. Bugün tanımlı her grup
+    /// açıkça eşlenmiştir; yeni bir grup eklenince ikinci kontrol bu testi düşürür ve eşleme bilerek yazılmak zorunda kalır.
+    /// </summary>
+    [Fact]
+    public void Unknown_control_group_is_refused_not_mapped_to_g4()
+    {
+        var error = Assert.Throws<InvalidOperationException>(() => EvaluationDataLoader.GroupOf((Fraud.Domain.Control.ControlGroup)99));
+        Assert.Contains("99", error.Message, StringComparison.Ordinal);
+
+        foreach (var group in Enum.GetValues<Fraud.Domain.Control.ControlGroup>())
+        {
+            _ = EvaluationDataLoader.GroupOf(group); // tanımlı her grup hatasız eşlenir
+        }
+    }
+
     private RepoContext TempRepo()
     {
         Directory.CreateDirectory(_dir);

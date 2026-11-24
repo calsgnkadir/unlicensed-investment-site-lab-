@@ -43,6 +43,9 @@ public sealed record EvaluationReport(
     /// <summary>Kontrol referans kuralı (MatchedLag ya da FirstCertificate).</summary>
     public ControlReferencePolicy? ControlReference { get; init; }
 
+    /// <summary>Eşik kümesinin (ayar bölmesi) kaynak grubuna göre sayıları: G4a, G4b. İleriye dönük testte boş (eşik yok).</summary>
+    public IReadOnlyList<(string Source, int Count)> CalibrationComposition { get; init; } = [];
+
     /// <summary>Konsola basılan metin. Her oranın yanında ham sayı, aralık ve sınır notu var (Kural 7).</summary>
     public string ToText()
     {
@@ -65,6 +68,11 @@ public sealed record EvaluationReport(
             ? "yok (alarmlar taahhüt edilmiş listeden okundu)"
             : Threshold.ToString("R", CultureInfo.InvariantCulture)
               + " (ayar kontrollerinde hedef yanlış alarm " + Percent(TargetFalseAlarmRate) + ", n=" + TuningCalibrationControls + ")"));
+        if (CalibrationComposition.Count > 0)
+        {
+            sb.AppendLine(Line("Eşik kümesi (ayar)", CompositionText(CalibrationComposition)));
+        }
+
         if (EvaluatedAt is { } at)
         {
             sb.AppendLine(Line("Değerlendirme anı", at.ToString("u", CultureInfo.InvariantCulture)));
@@ -130,6 +138,17 @@ public sealed record EvaluationReport(
     /// çünkü "hiç alarm yok" da tek bir site hakkında bilgi verir.
     /// </summary>
     public static string Cell(int count) => count < SmallCellLimit ? "<" + SmallCellLimit.ToString(CultureInfo.InvariantCulture) : count.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Eşik kümesinin dökümü, küçük hücre kuralıyla (E6). 5'ten küçük sayı "&lt;5" yazılır. Böyle bir sayı varsa öteki sayılar
+    /// da yazılmaz ("-"): Toplam n zaten basıldığı için "n − öteki" gizlenen sayıyı geri verirdi (tümleyen kuralı).
+    /// </summary>
+    public static string CompositionText(IReadOnlyList<(string Source, int Count)> parts)
+    {
+        ArgumentNullException.ThrowIfNull(parts);
+        var anySmall = parts.Any(p => p.Count < SmallCellLimit);
+        return string.Join(", ", parts.Select(p => p.Source + "=" + (p.Count < SmallCellLimit ? Cell(p.Count) : anySmall ? "-" : Cell(p.Count))));
+    }
 
     private static string Line(string key, string value) => key + ": " + value;
 
@@ -232,9 +251,11 @@ public static class EvaluationRunner
 
         // 3) Eşik: yalnızca ayar bölmesindeki, pozitife bağlı olmayan G4 kontrolleri (DECISIONS 2026-11-21). G4 alan adındaki
         // kelimeye bakılmadan seçilir; G1, G2, G3 ve Çerçeve K eşiğe girmez, seçilen eşikte grup ve çerçeve başına ayrı raporlanır.
+        // Çerçeve K koşulu ayrıca yazılır (DECISIONS 2026-11-24): Bugün G4b yalnızca N'den kurulur, ama ileride K taşıyan bir
+        // G4 birimi gelirse yalnızca gruba bakan süzgeç onu sessizce eşiğe alırdı. K kelime filtresinden geçtiği için eşiği yukarı iter.
         var calibration = all
             .Where(s => split.PartOf(s.Id) == SplitPart.Tuning && !s.IsPositive && !s.LinkedToPositive
-                        && s.Group == SubjectGroup.ControlRandom)
+                        && s.Group == SubjectGroup.ControlRandom && s.Subgroup != Subgroup.FrameTermConditioned)
             .ToList();
         var calibrationScores = calibration.Select(s => Predictor.Predict(signal, s, ObservationsOf(s), threshold: null).Score).ToList();
         var threshold = fixedThreshold ?? ThresholdSelector.Select(calibrationScores, config.TargetFalseAlarmRate);
@@ -244,8 +265,20 @@ public static class EvaluationRunner
         var test = all.Where(s => split.PartOf(s.Id) == testPart).ToList();
         var predictions = test.ToDictionary(s => s.Id, s => Predictor.Predict(signal, s, ObservationsOf(s), threshold), StringComparer.Ordinal);
 
-        return Report(config, mode, signal.Name, threshold, calibration.Count, assignment, split, test, observations, predictions, lockTicket, at);
+        return Report(config, mode, signal.Name, threshold, calibration.Count, assignment, split, test, observations, predictions, lockTicket, at)
+            with { CalibrationComposition = CompositionOf(calibration) };
     }
+
+    /// <summary>
+    /// Eşik kümesinin kaynak grubuna göre dökümü (DECISIONS 2026-11-24). Ölçüm modelinde G4a ile G4b aynı gruptur
+    /// (<see cref="SubjectGroup.ControlRandom"/>); onları çerçeve ayırır: G4a çerçevesizdir (Tranco), G4b Çerçeve N'dir.
+    /// Okuyan, "n=" sayısının hangi kaynaktan geldiğini görmezse eşiğin hangi kontrollere dayandığını bilemez.
+    /// </summary>
+    private static IReadOnlyList<(string Source, int Count)> CompositionOf(List<Subject> calibration) =>
+    [
+        ("G4a", calibration.Count(s => s.Subgroup == Subgroup.None)),
+        ("G4b", calibration.Count(s => s.Subgroup == Subgroup.FrameNeutral)),
+    ];
 
     /// <summary>
     /// İleriye dönük test (mentör maddesi 1). Alarm kümesi YENİDEN HESAPLANMAZ: Taahhüt dosyasında açılmış kayıtlardan

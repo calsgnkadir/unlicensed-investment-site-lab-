@@ -26,7 +26,10 @@ public sealed class SumSignal(IReadOnlyList<ISignal> parts) : ISignal
 /// <summary>Bir ablasyon satırı: hangi sinyal kümesi ve sonuç.</summary>
 /// <param name="Report">Satırın KENDİ eşiğiyle (G4 ayar kontrollerinden seçilmiş) sonuç.</param>
 /// <param name="AtFullThreshold">Aynı satır, TOPLAM(hepsi)'nin eşiği sabit tutularak. TOPLAM(hepsi) satırında <c>null</c>.</param>
-public sealed record AblationRow(string Variant, EvaluationReport Report, EvaluationReport? AtFullThreshold = null);
+/// <param name="AtFullThresholdSkipped">Sabit eşikli sürüm uygulanmadıysa kısa gerekçe (ör. tek parça, TOPLAM eşiği 1'in
+/// üstünde); o zaman <paramref name="AtFullThreshold"/> <c>null</c>.</param>
+public sealed record AblationRow(
+    string Variant, EvaluationReport Report, EvaluationReport? AtFullThreshold = null, string? AtFullThresholdSkipped = null);
 
 /// <summary>
 /// Ablasyon: Her parça tek başına, hepsinin toplamı ve her parça ÇIKARILMIŞ toplam ayrı ayrı aynı bölme, aynı eşik kuralı ve
@@ -48,22 +51,33 @@ public static class Ablation
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(parts);
         var at = now ?? DateTimeOffset.UtcNow;
-        var variants = new List<(string Name, ISignal Signal)>();
-        variants.AddRange(parts.Select(p => (p.Name, p)));
-        variants.Add((FullName, new SumSignal(parts)));
+        var variants = new List<(string Name, ISignal Signal, bool SinglePart)>();
+        variants.AddRange(parts.Select(p => (p.Name, p, true)));
+        variants.Add((FullName, new SumSignal(parts), false));
         if (parts.Count > 1)
         {
-            variants.AddRange(parts.Select(p => ("TOPLAM − " + p.Name, (ISignal)new SumSignal([.. parts.Where(q => !ReferenceEquals(q, p))]))));
+            variants.AddRange(parts.Select(p => ("TOPLAM − " + p.Name, (ISignal)new SumSignal([.. parts.Where(q => !ReferenceEquals(q, p))]), false)));
         }
 
         // Önce TOPLAM(hepsi): eşiği, öteki satırların "sabit eşikli" sürümünde kullanılır.
         var fullSignal = variants.Single(v => v.Name == FullName).Signal;
         var full = EvaluationRunner.Run(config, EvaluationMode.Historical, subjects, observations, fullSignal, now: at);
+
+        // Tek parça 0 ya da 1 puan verir (SumSignal). TOPLAM eşiği 1'in üstündeyse ("en az 2 parça") tek parça o eşiğe hiç
+        // ulaşamaz: recall her zaman 0 çıkar ve fark yalnızca "−TOPLAM recall" olur. Bu sayı sinyal hakkında bilgi taşımaz,
+        // o yüzden basılmaz; yerine gerekçe yazılır (DECISIONS 2026-11-24). Koşul veriye değil yalnızca eşiğe bakar.
+        string? SkipReason(bool singlePart) => singlePart && full.Threshold > 1
+            ? "uygulanmaz: tek parça en çok 1 puan alır, TOPLAM eşiği 1'in üstünde"
+            : null;
+
         return [.. variants.Select(v => v.Name == FullName
             ? new AblationRow(v.Name, full)
             : new AblationRow(v.Name,
                 EvaluationRunner.Run(config, EvaluationMode.Historical, subjects, observations, v.Signal, now: at),
-                EvaluationRunner.Run(config, EvaluationMode.Historical, subjects, observations, v.Signal, now: at, fixedThreshold: full.Threshold)))];
+                SkipReason(v.SinglePart) is null
+                    ? EvaluationRunner.Run(config, EvaluationMode.Historical, subjects, observations, v.Signal, now: at, fixedThreshold: full.Threshold)
+                    : null,
+                SkipReason(v.SinglePart)))];
     }
 
     /// <summary>
@@ -110,6 +124,10 @@ public static class Ablation
                 {
                     sb.Append(", TOPLAM eşiğiyle ").Append(DeltaText(Delta(full.Report.Recall, fixedRun.Recall)))
                       .Append(" (recall ").Append(EvaluationReport.Format(fixedRun.Recall)).Append(')');
+                }
+                else if (row.AtFullThresholdSkipped is { } reason)
+                {
+                    sb.Append(", TOPLAM eşiğiyle ").Append(reason);
                 }
             }
 

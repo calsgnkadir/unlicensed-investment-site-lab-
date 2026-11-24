@@ -209,13 +209,22 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
     }
 
     /// <summary>Kontrol grubu → ölçüm grubu. G4a ve G4b ikisi de "rastgele"; G4b'yi çerçevesi (N) ayırır.</summary>
+    /// <remarks>
+    /// Her grup açıkça yazılır; tanınmayan grup hata verir (DECISIONS 2026-11-24). Eskiden "geri kalan her şey G4" deniyordu:
+    /// İleride eklenen yeni bir kontrol grubu sessizce G4'e düşer ve eşik kümesine girerdi. Hata mesajında yalnızca grubun
+    /// sayısal değeri var, alan adı yok.
+    /// </remarks>
     public static SubjectGroup GroupOf(Fraud.Domain.Control.ControlGroup group) => group switch
     {
         Fraud.Domain.Control.ControlGroup.G1 => SubjectGroup.ControlLicensed,
         Fraud.Domain.Control.ControlGroup.G2 => SubjectGroup.ControlFinanceNews,
         Fraud.Domain.Control.ControlGroup.G3 => SubjectGroup.ControlHardNegative,
+        Fraud.Domain.Control.ControlGroup.G4a => SubjectGroup.ControlRandom,
+        Fraud.Domain.Control.ControlGroup.G4b => SubjectGroup.ControlRandom,
         Fraud.Domain.Control.ControlGroup.CryptoActive => SubjectGroup.ControlCryptoActive,
-        _ => SubjectGroup.ControlRandom,
+        _ => throw new InvalidOperationException(
+            "Tanınmayan kontrol grubu (değer " + ((int)group).ToString(CultureInfo.InvariantCulture)
+            + "). Ölçüm grubuna eşlemesi EvaluationDataLoader.GroupOf'a açıkça eklenmeden değerlendirmeye giremez."),
     };
 
     public static Subgroup FrameOf(Fraud.Domain.Control.SamplingFrame? frame) => frame switch

@@ -111,10 +111,112 @@ public sealed class ThresholdTests
 
         var full = rows.Single(r => r.Variant == Ablation.FullName);
         Assert.Null(full.AtFullThreshold);
-        Assert.All(rows.Where(r => r.Variant != Ablation.FullName), r => Assert.Equal(full.Report.Threshold, r.AtFullThreshold!.Threshold));
+        // Parça çıkarılmış satırlar TOPLAM eşiğiyle çalışır. Bu veride TOPLAM eşiği 1'in üstünde (numbered G4'te sık 1 alır), o
+        // yüzden tek parçalı satırlarda sabit eşikli sürüm uygulanmaz (DECISIONS 2026-11-24): gerekçe yazılır, sayı yazılmaz.
+        Assert.All(rows.Where(r => r.Variant.StartsWith("TOPLAM − ", StringComparison.Ordinal)),
+            r => Assert.Equal(full.Report.Threshold, r.AtFullThreshold!.Threshold));
+        Assert.All(rows.Where(r => r.Variant != Ablation.FullName),
+            r => Assert.True(r.AtFullThreshold is not null ^ r.AtFullThresholdSkipped is not null));
         Assert.Contains("kendi eşiğiyle", text, StringComparison.Ordinal);
         Assert.Contains("TOPLAM eşiğiyle", text, StringComparison.Ordinal);
         Assert.Contains("EŞİĞİN DEĞİŞMESİNİ", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>Her birime 1 veren uydurma parça: G4'ün tamamı 1 alır, böylece TOPLAM eşiği 1'in üstüne çıkar.</summary>
+    private sealed class AlwaysOneSignal : ISignal
+    {
+        public string Name => "always-one";
+
+        public double Score(AsOfView view) => 1;
+    }
+
+    /// <summary>
+    /// DECISIONS 2026-11-24: G4 grubunda Çerçeve K taşıyan birim eşik kümesine girmez. K adları terim taşır (baseline'da 1);
+    /// eşiğe girselerdi eşik 1'in üstüne çıkar ve baseline susardı. Sonuç, K birimleri hiç yokmuş gibi olmalı.
+    /// </summary>
+    [Fact]
+    public void Frame_k_in_g4_does_not_enter_threshold_set()
+    {
+        var (subjects, observations) = Build(0, Subgroup.FrameNeutral, _ => string.Empty);
+        var (withK, withKObs) = Build(0, Subgroup.FrameNeutral, _ => string.Empty);
+        for (var i = 0; i < 1200; i++)
+        {
+            var id = "k" + i.ToString("D4", CultureInfo.InvariantCulture);
+            var first = new DateTimeOffset(2025, 6, 1, 0, 0, 0, TimeSpan.Zero).AddDays(i % 365);
+            withK.Add(new Subject(id, SubjectGroup.ControlRandom, Subgroup.FrameTermConditioned, null, null, id, firstCertificateAt: first));
+            withKObs.Add(new Observation(id, ObservationKinds.Certificate, first, first, "c-" + id));
+            withKObs.Add(new Observation(id, ObservationKinds.Name, DateTimeOffset.MinValue, DateTimeOffset.MinValue,
+                "on" + "borsa" + "x" + i.ToString(CultureInfo.InvariantCulture) + ".test"));
+        }
+
+        var without = EvaluationRunner.Run(Config(), EvaluationMode.Historical, subjects, observations, new BaselineSignal(), now: Now);
+        var with = EvaluationRunner.Run(Config(), EvaluationMode.Historical, withK, withKObs, new BaselineSignal(), now: Now);
+
+        Assert.True(with.Threshold <= 1, "eşik 1'in üstünde: K birimleri eşik kümesine girdi");
+        Assert.Equal(without.Threshold, with.Threshold);
+        Assert.Equal(without.TuningCalibrationControls, with.TuningCalibrationControls);
+        // K birimleri yine raporda, ayrı tabakada görünür.
+        Assert.Contains(with.Strata, s => s.Group == SubjectGroup.ControlRandom && s.Subgroup == Subgroup.FrameTermConditioned);
+    }
+
+    /// <summary>DECISIONS 2026-11-24: Rapor eşik kümesini kaynağa göre döker (G4a çerçevesiz, G4b Çerçeve N); sayılar n ile tutar.</summary>
+    [Fact]
+    public void Report_prints_threshold_set_composition_by_source()
+    {
+        var (subjects, observations) = Build(0, Subgroup.FrameNeutral, _ => string.Empty);
+        for (var i = 0; i < 100; i++)
+        {
+            var id = "a" + i.ToString("D4", CultureInfo.InvariantCulture);
+            var first = new DateTimeOffset(2025, 6, 1, 0, 0, 0, TimeSpan.Zero).AddDays(i % 365);
+            subjects.Add(new Subject(id, SubjectGroup.ControlRandom, Subgroup.None, null, null, id, firstCertificateAt: first));
+            observations.Add(new Observation(id, ObservationKinds.Certificate, first, first, "c-" + id));
+        }
+
+        var report = EvaluationRunner.Run(Config(), EvaluationMode.Historical, subjects, observations, new BaselineSignal(), now: Now);
+
+        var g4a = report.CalibrationComposition.Single(c => c.Source == "G4a").Count;
+        var g4b = report.CalibrationComposition.Single(c => c.Source == "G4b").Count;
+        Assert.True(g4a >= EvaluationReport.SmallCellLimit && g4b >= EvaluationReport.SmallCellLimit);
+        Assert.Equal(report.TuningCalibrationControls, g4a + g4b);
+        Assert.Contains("Eşik kümesi (ayar): G4a=" + g4a.ToString(CultureInfo.InvariantCulture) + ", G4b=" + g4b.ToString(CultureInfo.InvariantCulture),
+            report.ToText(), StringComparison.Ordinal);
+    }
+
+    /// <summary>Küçük hücre: 5'ten küçük sayı "&lt;5", öteki de "-" (n basılı olduğu için tümleyen gizlenen sayıyı verirdi).</summary>
+    [Fact]
+    public void Composition_hides_small_cell_and_its_complement()
+    {
+        Assert.Equal("G4a=<5, G4b=-", EvaluationReport.CompositionText([("G4a", 3), ("G4b", 200)]));
+        Assert.Equal("G4a=<5, G4b=<5", EvaluationReport.CompositionText([("G4a", 0), ("G4b", 4)]));
+        Assert.Equal("G4a=5, G4b=200", EvaluationReport.CompositionText([("G4a", 5), ("G4b", 200)]));
+    }
+
+    /// <summary>
+    /// DECISIONS 2026-11-24: TOPLAM eşiği 1'in üstündeyse tek parçalı satırda "TOPLAM eşiğiyle" farkı uygulanmaz (0/1 puan o eşiğe
+    /// ulaşamaz, fark hep "−TOPLAM recall" olurdu). Parça çıkarılmış satırlarda fark yine hesaplanır.
+    /// </summary>
+    [Fact]
+    public void Ablation_marks_single_part_fixed_threshold_as_not_applicable_when_sum_threshold_above_one()
+    {
+        var (subjects, observations) = Build(0, Subgroup.FrameNeutral, _ => string.Empty);
+        ISignal[] parts = [new AlwaysOneSignal(), new BaselineSignal(), new NumberedNameSignal()];
+
+        var rows = Ablation.Run(Config(), subjects, observations, parts, Now);
+        var text = Ablation.ToText(rows);
+
+        var full = rows.Single(r => r.Variant == Ablation.FullName);
+        Assert.True(full.Report.Threshold > 1);
+        foreach (var part in parts)
+        {
+            var single = rows.Single(r => r.Variant == part.Name);
+            Assert.Null(single.AtFullThreshold);
+            Assert.NotNull(single.AtFullThresholdSkipped);
+            var leaveOut = rows.Single(r => r.Variant == "TOPLAM − " + part.Name);
+            Assert.NotNull(leaveOut.AtFullThreshold);
+            Assert.Null(leaveOut.AtFullThresholdSkipped);
+        }
+
+        Assert.Contains("TOPLAM eşiğiyle uygulanmaz", text, StringComparison.Ordinal);
     }
 
     [Fact]
