@@ -26,8 +26,8 @@ public sealed class SumSignal(IReadOnlyList<ISignal> parts) : ISignal
 /// <summary>Bir ablasyon satırı: hangi sinyal kümesi ve sonuç.</summary>
 /// <param name="Report">Satırın KENDİ eşiğiyle (G4 ayar kontrollerinden seçilmiş) sonuç.</param>
 /// <param name="AtFullThreshold">Aynı satır, TOPLAM(hepsi)'nin eşiği sabit tutularak. TOPLAM(hepsi) satırında <c>null</c>.</param>
-/// <param name="AtFullThresholdSkipped">Sabit eşikli sürüm uygulanmadıysa kısa gerekçe (ör. tek parça, TOPLAM eşiği 1'in
-/// üstünde); o zaman <paramref name="AtFullThreshold"/> <c>null</c>.</param>
+/// <param name="AtFullThresholdSkipped">Sabit eşikli sürüm uygulanmadıysa kısa gerekçe (satırın en yüksek puanı TOPLAM
+/// eşiğine ulaşamıyor); o zaman <paramref name="AtFullThreshold"/> <c>null</c>.</param>
 public sealed record AblationRow(
     string Variant, EvaluationReport Report, EvaluationReport? AtFullThreshold = null, string? AtFullThresholdSkipped = null);
 
@@ -54,6 +54,7 @@ public static class Ablation
         // PartCount: satırdaki sinyal kaç parçadan oluşuyor. Yalnızca yapıdan gelir, sonuca bakmaz. Tek sinyal satırı 1 parça,
         // "TOPLAM − x" satırı (toplam − 1) parça. Eskiden burada elle verilen bir "tek parça" bayrağı vardı ve "TOPLAM − x"
         // satırlarında hep false idi; iki parçalı koşuda "TOPLAM − x" de tek parça kaldığı halde anlamsız fark basılıyordu.
+        // Parça sayısı aynı zamanda satırın EN YÜKSEK puanıdır, çünkü her parça 0 ya da 1 verir (aşağıdaki SkipReason).
         var variants = new List<(string Name, ISignal Signal, int PartCount)>();
         variants.AddRange(parts.Select(p => (p.Name, p, 1)));
         variants.Add((FullName, new SumSignal(parts), parts.Count));
@@ -67,13 +68,8 @@ public static class Ablation
         var fullSignal = variants.Single(v => v.Name == FullName).Signal;
         var full = EvaluationRunner.Run(config, EvaluationMode.Historical, subjects, observations, fullSignal, now: at);
 
-        // Tek parça 0 ya da 1 puan verir (SumSignal). TOPLAM eşiği 1'in üstündeyse ("en az 2 parça") tek parça o eşiğe hiç
-        // ulaşamaz: recall her zaman 0 çıkar ve fark yalnızca "−TOPLAM recall" olur. Bu sayı sinyal hakkında bilgi taşımaz,
-        // o yüzden basılmaz; yerine gerekçe yazılır (DECISIONS 2026-11-24). Koşul veriye değil yalnızca parça sayısına ve eşiğe
-        // bakar. "TOPLAM − x" satırında tek parça kalmışsa (iki parçalı koşu) aynı durum geçerlidir.
-        string? SkipReason(int partCount) => partCount == 1 && full.Threshold > 1
-            ? "uygulanmaz: tek parçalı satır en çok 1 puan alır, TOPLAM eşiği 1'in üstünde"
-            : null;
+        // Bir satırın sabit eşikli sürümü, en yüksek puanı TOPLAM eşiğine ulaşamıyorsa çalıştırılmaz (FixedThresholdSkipReason).
+        string? SkipReason(int partCount) => FixedThresholdSkipReason(partCount, full.Threshold);
 
         return [.. variants.Select(v => v.Name == FullName
             ? new AblationRow(v.Name, full)
@@ -84,6 +80,22 @@ public static class Ablation
                     : null,
                 SkipReason(v.PartCount)))];
     }
+
+    /// <summary>
+    /// Sabit eşikli sürüm neden uygulanmaz; uygulanırsa <c>null</c>. Yalnızca parça sayısına ve eşiğe bakar, sonuca bakmaz
+    /// (DECISIONS 2026-11-24).
+    /// </summary>
+    /// <remarks>
+    /// Her parça 0 ya da 1 puan verir, k parçalı satır en çok k puan alır. Alarm kuralı "puan ≥ eşik" (<see cref="Predictor"/>).
+    /// Eşik ya ayardaki bir puanın kendisidir (ör. tam 3) ya da bir puanın hemen üstündeki double'dır
+    /// (<c>Math.BitIncrement(2)</c>, yani "en az 3 parça"; <see cref="ThresholdSelector"/>). Demek ki satır eşiğe ancak
+    /// k ≥ eşik ise ulaşabilir. k &lt; eşik ise recall her zaman 0 çıkar ve fark yalnızca "−TOPLAM recall" olur; bu sayı sinyal
+    /// hakkında bilgi taşımaz, o yüzden basılmaz, yerine gerekçe yazılır. Eşik tam k ise (3 parça, eşik 3) satır eşiğe
+    /// ulaşabilir ve normal çalışır: Karşılaştırma bu yüzden "&lt;", "≤" değil.
+    /// </remarks>
+    public static string? FixedThresholdSkipReason(int partCount, double fullThreshold) => partCount < fullThreshold
+        ? string.Create(CultureInfo.InvariantCulture, $"uygulanmaz: {partCount} parçalı satır en çok {partCount} puan alır, TOPLAM eşiğine ulaşamaz")
+        : null;
 
     /// <summary>
     /// Tablo metni: sinyal × grup × çerçeve. Yalnızca toplu sayılar; küçük hücre kuralı (<see cref="EvaluationReport.Format"/>).

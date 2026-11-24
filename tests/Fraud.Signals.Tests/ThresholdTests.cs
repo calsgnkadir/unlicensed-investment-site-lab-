@@ -127,12 +127,12 @@ public sealed class ThresholdTests
         Assert.Contains("EŞİĞİN DEĞİŞMESİNİ", text, StringComparison.Ordinal);
     }
 
-    /// <summary>Her birime 1 veren uydurma parça: G4'ün tamamı 1 alır, böylece TOPLAM eşiği 1'in üstüne çıkar.</summary>
-    private sealed class AlwaysOneSignal : ISignal
+    /// <summary>Her birime aynı puanı veren uydurma parça. Ad ayrı verilir: ablasyon satırları parça adıyla ayrılır.</summary>
+    private sealed class ConstSignal(string name, double value) : ISignal
     {
-        public string Name => "always-one";
+        public string Name => name;
 
-        public double Score(AsOfView view) => 1;
+        public double Score(AsOfView view) => value;
     }
 
     /// <summary>
@@ -197,31 +197,72 @@ public sealed class ThresholdTests
     }
 
     /// <summary>
-    /// DECISIONS 2026-11-24: TOPLAM eşiği 1'in üstündeyse tek parçalı satırda "TOPLAM eşiğiyle" farkı uygulanmaz (0/1 puan o eşiğe
-    /// ulaşamaz, fark hep "−TOPLAM recall" olurdu). Parça çıkarılmış satırlarda fark yine hesaplanır.
+    /// DECISIONS 2026-11-24: Satırın en yüksek puanı (parça sayısı) TOPLAM eşiğine ulaşamıyorsa "TOPLAM eşiğiyle" farkı uygulanmaz.
+    /// İki sabit 1 ve baseline: G4'ün tamamı 2 alır, eşik 2'nin hemen üstü ("en az 3 parça"). Tek parçalı satırlar da, 2 parçalı
+    /// "TOPLAM − x" satırları da bu eşiğe ulaşamaz; hepsinde gerekçe yazılır, sayı yazılmaz.
     /// </summary>
     [Fact]
-    public void Ablation_marks_single_part_fixed_threshold_as_not_applicable_when_sum_threshold_above_one()
+    public void Ablation_skips_fixed_threshold_for_two_part_rows_when_sum_needs_three_parts()
     {
         var (subjects, observations) = Build(0, Subgroup.FrameNeutral, _ => string.Empty);
-        ISignal[] parts = [new AlwaysOneSignal(), new BaselineSignal(), new NumberedNameSignal()];
+        ISignal[] parts = [new ConstSignal("one-a", 1), new ConstSignal("one-b", 1), new BaselineSignal()];
 
         var rows = Ablation.Run(Config(), subjects, observations, parts, Now);
         var text = Ablation.ToText(rows);
 
         var full = rows.Single(r => r.Variant == Ablation.FullName);
-        Assert.True(full.Report.Threshold > 1);
+        Assert.Equal(Math.BitIncrement(2.0), full.Report.Threshold);
+        Assert.All(rows.Where(r => r.Variant != Ablation.FullName), r =>
+        {
+            Assert.Null(r.AtFullThreshold);
+            Assert.NotNull(r.AtFullThresholdSkipped);
+        });
+        Assert.Contains("TOPLAM eşiğiyle uygulanmaz: 2 parçalı satır", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Aynı eşik ("en az 3 parça"), ama dört parça: "TOPLAM − x" satırlarında 3 parça kalır ve eşiğe ulaşabilir, bu yüzden sabit
+    /// eşikli sürüm çalışır. Tek parçalı satırlar yine uygulanmaz.
+    /// </summary>
+    [Fact]
+    public void Ablation_evaluates_three_part_rows_when_sum_needs_three_parts()
+    {
+        var (subjects, observations) = Build(0, Subgroup.FrameNeutral, _ => string.Empty);
+        ISignal[] parts = [new ConstSignal("one-a", 1), new ConstSignal("one-b", 1), new BaselineSignal(), new ConstSignal("zero", 0)];
+
+        var rows = Ablation.Run(Config(), subjects, observations, parts, Now);
+
+        var full = rows.Single(r => r.Variant == Ablation.FullName);
+        Assert.Equal(Math.BitIncrement(2.0), full.Report.Threshold);
         foreach (var part in parts)
         {
             var single = rows.Single(r => r.Variant == part.Name);
             Assert.Null(single.AtFullThreshold);
             Assert.NotNull(single.AtFullThresholdSkipped);
             var leaveOut = rows.Single(r => r.Variant == "TOPLAM − " + part.Name);
-            Assert.NotNull(leaveOut.AtFullThreshold);
+            Assert.Equal(full.Report.Threshold, leaveOut.AtFullThreshold!.Threshold);
             Assert.Null(leaveOut.AtFullThresholdSkipped);
         }
+    }
 
-        Assert.Contains("TOPLAM eşiğiyle uygulanmaz", text, StringComparison.Ordinal);
+    /// <summary>
+    /// Sınır: Alarm kuralı "puan ≥ eşik". Eşik tam 3 ise 3 parçalı satır ulaşabilir (çalışır), 2 parçalı ulaşamaz. Eşik 2'nin
+    /// hemen üstündeyse (seçicinin BitIncrement sonucu) 2 parçalı satır ulaşamaz, 3 parçalı ulaşır.
+    /// </summary>
+    [Theory]
+    [InlineData(3, 3.0, false)]
+    [InlineData(2, 3.0, true)]
+    [InlineData(1, 1.0, false)]
+    [InlineData(1, 0.5, false)]
+    public void Skip_reason_compares_max_score_with_threshold(int partCount, double threshold, bool skipped) =>
+        Assert.Equal(skipped, Ablation.FixedThresholdSkipReason(partCount, threshold) is not null);
+
+    [Fact]
+    public void Skip_reason_handles_threshold_just_above_an_integer()
+    {
+        Assert.NotNull(Ablation.FixedThresholdSkipReason(2, Math.BitIncrement(2.0)));
+        Assert.Null(Ablation.FixedThresholdSkipReason(3, Math.BitIncrement(2.0)));
+        Assert.NotNull(Ablation.FixedThresholdSkipReason(1, Math.BitIncrement(1.0)));
     }
 
     /// <summary>Her birime 0 veren uydurma parça: TOPLAM eşiğini yükseltmez.</summary>
