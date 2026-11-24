@@ -11,7 +11,7 @@ Nasıl çalışacaksın:
 5. Bölüm 5'i oku: Bilinen sınırlar, kapanan maddeler ve kodda hâlâ açık noktalar.
 6. Bölüm 6'daki sınama sorularını cevapları görmeden çöz. Cevaplar en altta, ayrı bir başlıkta.
 
-Bağlantılar bu dosyanın yerine göre yazıldı (`docs/learn/`). Satır numaraları 2026-11-24 tarihli main koduna göre (9e8461f, 6792d9f ve 831c5ff commit'leri dahil). Kod değişirse fonksiyon adıyla ara. Hafta 6 rehberini ([HAFTA6_OLCUM_OKUMA.md](HAFTA6_OLCUM_OKUMA.md)) bitirmeden buna başlama. `AsOfView`, `Predictor`, `ThresholdSelector` ve küçük hücre kuralı burada bilindiği varsayılıyor.
+Bağlantılar bu dosyanın yerine göre yazıldı (`docs/learn/`). Satır numaraları 2026-11-24 tarihli main koduna göre (9e8461f, 6792d9f, 831c5ff, 43ef5ca ve 148e358 commit'leri dahil). Kod değişirse fonksiyon adıyla ara. Hafta 6 rehberini ([HAFTA6_OLCUM_OKUMA.md](HAFTA6_OLCUM_OKUMA.md)) bitirmeden buna başlama. `AsOfView`, `Predictor`, `ThresholdSelector` ve küçük hücre kuralı burada bilindiği varsayılıyor.
 
 Ön okuma: [FINANS_SOZLUGU.md](../research/FINANS_SOZLUGU.md) (sözlük ve baseline terimleri), [KONTROL_GRUBU_YONTEMI.md](../research/KONTROL_GRUBU_YONTEMI.md) Bölüm 2–5 (G1–G4 nasıl kuruldu), [DECISIONS.md](../DECISIONS.md) içindeki iki 2026-11-21 kaydı.
 
@@ -25,6 +25,7 @@ Bağlantılar bu dosyanın yerine göre yazıldı (`docs/learn/`). Satır numara
 | Kilitli kipte marka listesi kayda bağlı değildi (S1) | **Kapandı.** Liste G1 taahhüdünden üretiliyor, özeti yapılandırmada ve kilit kaydında. | Bölüm 2.12 |
 | G2 kaynağı | Radar yerine Wikidata. | Bölüm 2.13 |
 | Dört küçük dürüstlük düzeltmesi: K çerçevesi eşikten açıkça dışarıda, tanınmayan grup hata veriyor, rapor eşik kümesini G4a/G4b diye döküyor, tek parça satırlarında sabit eşikli fark "uygulanmaz" | **Kapandı, 2026-11-24** ([DECISIONS.md](../DECISIONS.md), "2026-11-24: Eşik kümesi ve ablasyon raporunda dört küçük dürüstlük düzeltmesi"). | Bölüm 2.9, 2.10, 2.14, 5.2 |
+| G2 kuralları raporda: "yeterli örnek yok" bayrağı, Türkiye alt kümesi satırı. Ablasyonda "uygulanmaz" kuralı tek parçadan "parça sayısı < TOPLAM eşiği"ne genişletildi | **Kapandı, 2026-11-24** ([DECISIONS.md](../DECISIONS.md), "2026-11-24: G2 kuralları raporda uygulanır, ablasyonda tek parça kuralı düzeltildi"). Genişletmeyi Kadircan hiçbir sonuç görülmeden onayladı. | Bölüm 2.10, 2.15, 5.2 |
 
 ---
 
@@ -40,7 +41,7 @@ Bağlantılar bu dosyanın yerine göre yazıldı (`docs/learn/`). Satır numara
 2. **Marka sinyali, G1'de.** Marka listesi G1'deki lisanslı kurumların adlarından üretildi. G1'deki bir ad, listedeki bir markanın kendisi olduğu için sinyal ona bilerek 0 verir. G1'de "hiç yanlış alarm yok" sonucu da bir başarı değil, kurgudur.
 3. **Sözlük sinyali, G3'te.** G3 (zor negatifler) "aynı dönemde ilk sertifikasını almış ve sözlükle eşleşen adlar" diye kuruldu. Yeni sertifika + sözlük sinyali G3'te tanım gereği 1 verir.
 
-Kural: Bir sinyalin kendi kurgusunun içinde ölçüldüğü tabaka, o sinyal için hiçbir şey kanıtlamaz. Gerçek sınav, kurguya dokunmayan tabakalardır: pozitifler, Çerçeve N ve tanım gereği alarmın olmadığı gruplar. Rapor bu notları kendisi basıyor ([Ablation.cs:91–107](../../src/Fraud.Evaluation/Running/Ablation.cs)).
+Kural: Bir sinyalin kendi kurgusunun içinde ölçüldüğü tabaka, o sinyal için hiçbir şey kanıtlamaz. Gerçek sınav, kurguya dokunmayan tabakalardır: pozitifler, Çerçeve N ve tanım gereği alarmın olmadığı gruplar. Rapor bu notları kendisi basıyor ([Ablation.cs:108–124](../../src/Fraud.Evaluation/Running/Ablation.cs)).
 
 Bu kuralın bir de ikinci yüzü var: Kurgu tabakası yalnızca **ölçüm** olarak sayılmamakla kalmamalı, **eşiği de belirlememeli**. Eskiden belirleyebiliyordu. 2026-11-21'de kapandı. Ayrıntısı Bölüm 2.9'da.
 
@@ -56,9 +57,9 @@ Bu kuralın bir de ikinci yüzü var: Kurgu tabakası yalnızca **ölçüm** ola
 |---|---|
 | [Observation.cs:12–16](../../src/Fraud.Evaluation/Model/Observation.cs) | `ObservationKinds.Name` ne taşıyor? Neden "hiçbir çıktıya yazılmaz" deniyor (Kural 4)? |
 | Observation.cs:27–29 | `Value` alanı sertifikada ve ad gözleminde neyi tutuyor? |
-| [EvaluationDataLoader.cs:161–167](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs) | Ad gözleminin `KnownAt`'i neden `DateTimeOffset.MinValue`? Bu bir gelecek sızıntısı mı? (İpucu: Ad zamanla değişmez. Karar günü öğrenilen bir bilgi değil.) |
-| EvaluationDataLoader.cs:129, :142 | Ad gözlemi hem pozitife hem kontrole aynı yoldan ekleniyor. Bu simetri neden önemli? |
-| EvaluationDataLoader.cs:99–104 | Sertifika gözleminin `Value`'su artık bir **veriliş kimliği**. Bu kimlik nasıl üretiliyor, patlama sinyalinde nasıl kullanılıyor? (Bölüm 2.6.) |
+| [EvaluationDataLoader.cs:166–172](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs) | Ad gözleminin `KnownAt`'i neden `DateTimeOffset.MinValue`? Bu bir gelecek sızıntısı mı? (İpucu: Ad zamanla değişmez. Karar günü öğrenilen bir bilgi değil.) |
+| EvaluationDataLoader.cs:132, :147 | Ad gözlemi hem pozitife hem kontrole aynı yoldan ekleniyor. Bu simetri neden önemli? |
+| EvaluationDataLoader.cs:102–107 | Sertifika gözleminin `Value`'su artık bir **veriliş kimliği**. Bu kimlik nasıl üretiliyor, patlama sinyalinde nasıl kullanılıyor? (Bölüm 2.6.) |
 | [SubjectName.cs:10–13](../../src/Fraud.Signals/SubjectName.cs) | Ad neden `AsOfView`'a ayrı bir özellik olarak eklenmedi? Görünüm sözleşmesi hangi üç şeyi içeriyor (Hafta 6, AsOfView)? |
 | SubjectName.cs:18–22, :28–29 | `Registrable` ve `FoldedLeftLabel` ne döndürüyor? Ad gözlemi yoksa ne oluyor? Neden yalnızca soldaki etiket? |
 | [Predictor.cs:30–32](../../src/Fraud.Evaluation/Running/Predictor.cs) | Ad gözlemi değerlendirme başlangıcından neden dışlanıyor? Dışlanmasaydı `timed.Min(o => o.KnownAt)` ne olurdu ve döngü kaç gün dönerdi? |
@@ -131,9 +132,9 @@ Bu kuralın bir de ikinci yüzü var: Kurgu tabakası yalnızca **ölçüm** ola
 
 | Yer | Soru |
 |---|---|
-| [EvaluationDataLoader.cs:85–88](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs) | Sorgu sertifikadan hangi alanları çekiyor? Eskiden çekilen satır kimliği neden artık yok? |
-| EvaluationDataLoader.cs:99–104 | Yorumu oku. Aynı sertifika birden çok alan adı satırına bağlıysa ne oluyor? "Yayıncı metni gözleme girmez" neden önemli? (İpucu: Kural 5 ve gözlem değerinin kısa kalması.) |
-| EvaluationDataLoader.cs:150–159 | **`IssuanceId`, adım adım.** Seri numarası hangi dört adımdan geçiyor: `:` silme, kırpma, küçük harf, baştaki sıfırları atma. Her biri hangi yazım farkını yok ediyor? Neden `ToLowerInvariant` (I/ı)? Yayıncı adında yalnızca `Trim` var. Neden? Özet neden 16 onaltılık karakter (64 bit)? |
+| [EvaluationDataLoader.cs:88–91](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs) | Sorgu sertifikadan hangi alanları çekiyor? Eskiden çekilen satır kimliği neden artık yok? |
+| EvaluationDataLoader.cs:102–107 | Yorumu oku. Aynı sertifika birden çok alan adı satırına bağlıysa ne oluyor? "Yayıncı metni gözleme girmez" neden önemli? (İpucu: Kural 5 ve gözlem değerinin kısa kalması.) |
+| EvaluationDataLoader.cs:154–164 | **`IssuanceId`, adım adım.** Seri numarası hangi dört adımdan geçiyor: `:` silme, kırpma, küçük harf, baştaki sıfırları atma. Her biri hangi yazım farkını yok ediyor? Neden `ToLowerInvariant` (I/ı)? Yayıncı adında yalnızca `Trim` var. Neden? Özet neden 16 onaltılık karakter (64 bit)? |
 | [CertificateBurstSignal.cs:10–11](../../src/Fraud.Signals/CertificateBurstSignal.cs) | Pencere `(AsOf − 30 gün, AsOf]`. Üst sınırı kim koyuyor, alt sınırı kim? Alt sınır neden açık (`>`)? |
 | CertificateBurstSignal.cs:12–14 | "Farklı sertifika" artık nasıl tanımlanıyor? Ön sertifika ve son hal neden bir sayılıyor? Kimliği olmayan gözlem nasıl sayılıyor ve bu bugün hâlâ olur mu? |
 | CertificateBurstSignal.cs:15–17 | 30 gün ve 5 sertifika nereden geliyor? Normal bir ad 30 günde kaç sertifika alır? |
@@ -173,26 +174,27 @@ Bu kuralın bir de ikinci yüzü var: Kurgu tabakası yalnızca **ölçüm** ola
 
 | Yer | Ne yapıyor, ne soracaksın |
 |---|---|
-| [EvaluationRunner.cs:252–255](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs) | Yorum iki kararı ve tarihlerini anıyor: 2026-11-21 (yalnızca G4) ve 2026-11-24 (K çerçevesi ayrıca dışarıda). Kod ile karar kaydı birbirine bağlı. |
-| EvaluationRunner.cs:256–259 | **Asıl süzgeç.** Beş koşul var (:257–258). Her birini tek tek söyle: (1) `split.PartOf(s.Id) == SplitPart.Tuning`: Test birimi eşiğe giremez. (2) `!s.IsPositive`: Pozitif eşiğe giremez, eşik yalnızca yanlış alarma göre seçilir. (3) `!s.LinkedToPositive`: Bir pozitifle aynı kümedeki kontrol (E05) eşiğe giremez. (4) `s.Group == SubjectGroup.ControlRandom`: Yalnızca G4. (5) `s.Subgroup != Subgroup.FrameTermConditioned`: G4 olsa bile K çerçevesinden gelen birim giremez. Soru: Bugün G4'te K birimi yok. Beşinci koşul o zaman neden yazıldı? Grup burada sabit yazılı ve runner `config.CalibrationGroups`'u hiç okumuyor. Bunun iyi ve kötü yanı ne? |
-| EvaluationRunner.cs:260 | Puanlar `threshold: null` ile hesaplanıyor. Neden? (Eşik daha yok. Yalnızca en yüksek puan lazım.) |
-| EvaluationRunner.cs:261 | `fixedThreshold ?? ThresholdSelector.Select(...)`. Sabit eşik ne zaman verilir? (Yalnızca ablasyon, Bölüm 2.10.) |
-| EvaluationRunner.cs:264–266 | Test tahminleri eşik sabitlendikten **sonra**. Sıra neden önemli? |
-| EvaluationRunner.cs:268–269 | Rapor kuruluyor, sonra `with { CalibrationComposition = ... }` ile eşik kümesinin dökümü ekleniyor. Bu söz dizimi Bölüm 2.14, not 1'de. |
-| EvaluationRunner.cs:272–281 | `CompositionOf`: Eşik kümesi G4a ve G4b diye sayılıyor. İkisi aynı ölçüm grubunda. Onları ne ayırıyor? (Çerçeve: G4a çerçevesiz, `Subgroup.None`. G4b Çerçeve N.) Bir birim ne G4a ne G4b sayılırsa ne olur? (İki sayının toplamı `n`'den az çıkar. Test bunu denetliyor: ThresholdTests.cs:180.) |
+| [EvaluationRunner.cs:311–314](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs) | Yorum iki kararı ve tarihlerini anıyor: 2026-11-21 (yalnızca G4) ve 2026-11-24 (K çerçevesi ayrıca dışarıda). Kod ile karar kaydı birbirine bağlı. |
+| EvaluationRunner.cs:315–318 | **Asıl süzgeç.** Beş koşul var (:316–317). Her birini tek tek söyle: (1) `split.PartOf(s.Id) == SplitPart.Tuning`: Test birimi eşiğe giremez. (2) `!s.IsPositive`: Pozitif eşiğe giremez, eşik yalnızca yanlış alarma göre seçilir. (3) `!s.LinkedToPositive`: Bir pozitifle aynı kümedeki kontrol (E05) eşiğe giremez. (4) `s.Group == SubjectGroup.ControlRandom`: Yalnızca G4. (5) `s.Subgroup != Subgroup.FrameTermConditioned`: G4 olsa bile K çerçevesinden gelen birim giremez. Soru: Bugün G4'te K birimi yok. Beşinci koşul o zaman neden yazıldı? Grup burada sabit yazılı ve runner `config.CalibrationGroups`'u hiç okumuyor. Bunun iyi ve kötü yanı ne? |
+| EvaluationRunner.cs:319 | Puanlar `threshold: null` ile hesaplanıyor. Neden? (Eşik daha yok. Yalnızca en yüksek puan lazım.) |
+| EvaluationRunner.cs:320 | `fixedThreshold ?? ThresholdSelector.Select(...)`. Sabit eşik ne zaman verilir? (Yalnızca ablasyon, Bölüm 2.10.) |
+| EvaluationRunner.cs:323–325 | Test tahminleri eşik sabitlendikten **sonra**. Sıra neden önemli? |
+| EvaluationRunner.cs:327–328 | Rapor kuruluyor, sonra `with { CalibrationComposition = ... }` ile eşik kümesinin dökümü ekleniyor. Bu söz dizimi Bölüm 2.14, not 1'de. |
+| EvaluationRunner.cs:331–340 | `CompositionOf`: Eşik kümesi G4a ve G4b diye sayılıyor. İkisi aynı ölçüm grubunda. Onları ne ayırıyor? (Çerçeve: G4a çerçevesiz, `Subgroup.None`. G4b Çerçeve N.) Bir birim ne G4a ne G4b sayılırsa ne olur? (İki sayının toplamı `n`'den az çıkar. Test bunu denetliyor: ThresholdTests.cs:185.) |
 | EvaluationRunner.cs:46–47, :67–74 | Rapor eşiği, hedef oranı ve `n=` değerini yazıyor. Altına "Eşik kümesi (ayar): G4a=..., G4b=..." satırı geliyor. İleriye dönük testte bu satır neden basılmıyor? (Eşik yok, liste boş kalıyor.) |
-| EvaluationRunner.cs:142–151 | `CompositionText`: küçük hücre ve tümleyen kuralı. İç içe üçlü işleç (`? :`) Bölüm 2.14, not 2'de. |
+| EvaluationRunner.cs:147–156 | `CompositionText`: küçük hücre ve tümleyen kuralı. İç içe üçlü işleç (`? :`) Bölüm 2.14, not 2'de. |
 | [EvaluationConfig.cs:153–158](../../src/Fraud.Evaluation/EvaluationConfig.cs) | Varsayılan artık `[SubjectGroup.ControlRandom]`. Alan neden silinmedi? (Eski yapılandırma dosyaları okunabilsin.) |
 | EvaluationConfig.cs:242 | `CalibrationGroups is not [SubjectGroup.ControlRandom]`. Bu bir **liste deseni**: Liste tam olarak tek elemanlı ve o eleman `ControlRandom` değilse yapılandırma reddedilir. Soru: Runner bu alanı okumuyorsa bu satır neden var? |
-| [EvaluationDataLoader.cs:211–228](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs) | Her kontrol grubu açıkça yazılı. G4a ve G4b ikisi de `ControlRandom`. Son kol (:225–227) artık tanınmayan grupta hata fırlatıyor. Eskiden `_ => SubjectGroup.ControlRandom` vardı. Fark ne? Hata mesajında neden yalnızca sayısal değer var? |
-| EvaluationDataLoader.cs:230–235 | `FrameOf`: K, N ya da yok. Burada `_ => Subgroup.None` hâlâ duruyor. Neden burada sorun değil? (Çerçevesi olmayan grup zaten G4a gibi çerçevesiz sayılmalı. Üstelik K'yi eşikten dışlayan koşul ayrı.) |
+| [EvaluationDataLoader.cs:237–254](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs) | Her kontrol grubu açıkça yazılı. G4a ve G4b ikisi de `ControlRandom`. Son kol (:251–253) artık tanınmayan grupta hata fırlatıyor. Eskiden `_ => SubjectGroup.ControlRandom` vardı. Fark ne? Hata mesajında neden yalnızca sayısal değer var? |
+| EvaluationDataLoader.cs:256–261 | `FrameOf`: K, N ya da yok. Burada `_ => Subgroup.None` hâlâ duruyor. Neden burada sorun değil? (Çerçevesi olmayan grup zaten G4a gibi çerçevesiz sayılmalı. Üstelik K'yi eşikten dışlayan koşul ayrı.) |
 | [ControlCommands.cs:385](../../src/Fraud.Collectors/Control/ControlCommands.cs) | G3 hem N hem K çerçevesinden kuruluyor, G4b yalnızca N'den. Bu satır, "bugün G4'te tanım gereği 1 alan birim yok" iddiasının dayanağı. Beşinci koşul bu satır yarın değişirse diye var. |
 | [ThresholdTests.cs:60–78](../../tests/Fraud.Signals.Tests/ThresholdTests.cs) | 1.200 Çerçeve K birimi var (G3'te), hepsi baseline'da 1. Eski kuralda ne olurdu? Yeni kuralda eşik nereden geliyor? K satırı neden %100 ve neden "ölçüm değil"? |
 | ThresholdTests.cs:80–94 | G3'te 300 birim hep 1 ya da 900 birim hep 0. Eşik ve recall neden aynı çıkmalı? Bu test hangi bağımlılığı kırdığını kanıtlıyor? |
 | ThresholdTests.cs:96–101 | Hangi üç yapılandırma reddediliyor? |
-| ThresholdTests.cs:133–160 | Bu kez K birimleri **G4'ün içinde** (:146). Sonuç neden K birimleri hiç yokmuş gibi çıkmalı (:155–157)? K birimleri raporda yine görünüyor mu (:159)? |
-| ThresholdTests.cs:162–183 | Döküm testi. :179 neden iki sayının da 5 ya da üstü olmasını şart koşuyor? (Yoksa metin "<5" ya da "-" olurdu ve :181'deki karşılaştırma tutmazdı.) |
-| ThresholdTests.cs:185–192 | Üç örneği kâğıtta tekrar et: (3, 200), (0, 4), (5, 200). |
+| ThresholdTests.cs:138–165 | Bu kez K birimleri **G4'ün içinde** (:151). Sonuç neden K birimleri hiç yokmuş gibi çıkmalı (:160–162)? K birimleri raporda yine görünüyor mu (:164)? |
+| ThresholdTests.cs:167–188 | Döküm testi. :184 neden iki sayının da 5 ya da üstü olmasını şart koşuyor? (Yoksa metin "<5" ya da "-" olurdu ve :186'daki karşılaştırma tutmazdı.) |
+| ThresholdTests.cs:190–197 | Üç örneği kâğıtta tekrar et: (3, 200), (0, 4), (5, 200). |
+| [G2ReportTests.cs:39–51](../../tests/Fraud.Evaluation.Tests/G2ReportTests.cs) | 600 G2 birimi eklenince eşik, `n` ve döküm neden hiç değişmemeli? (G2 eşiğe girmez.) |
 | [EvaluationLoaderTests.cs:410–421, :423–437](../../tests/Fraud.Integration.Tests/Evaluation/EvaluationLoaderTests.cs) | İlk test her grubun eşlemesini tek tek denetliyor. İkincisi 99 değerinin reddedildiğini ve bütün grupların hatasız eşlendiğini denetliyor. :433–436'daki döngü neden bilerek kırılgan? (Bölüm 2.14, not 4.) |
 | [SafetyTests.cs:191–201, :203–220](../../tests/Fraud.Evaluation.Tests/SafetyTests.cs) | Repodaki örnek yapılandırma neden varsayılanla aynı `CalibrationGroups`'u vermeli? |
 
@@ -212,19 +214,25 @@ Bu kuralın bir de ikinci yüzü var: Kurgu tabakası yalnızca **ölçüm** ola
 | [Ablation.cs:26–32](../../src/Fraud.Evaluation/Running/Ablation.cs) | `AblationRow` üç şey taşıyor: `Report` (satırın kendi eşiği), `AtFullThreshold` (TOPLAM(hepsi)'nin eşiği) ve `AtFullThresholdSkipped` (sabit eşikli sürüm uygulanmadıysa gerekçe). TOPLAM satırında ikisi neden `null`? Bir satırda ikisi birden dolu olabilir mi? |
 | Ablation.cs:34–42 | Ablasyon hangi satırları üretiyor? Neden yalnızca geçmiş veri testinde? |
 | Ablation.cs:53 | "Şimdi" neden bir kez alınıp bütün satırlara veriliyor? Her satır kendi saatini alsaydı ne değişebilirdi? |
-| Ablation.cs:54–60 | **"TOPLAM − x".** Her satır artık bir `SinglePart` bayrağı taşıyor: Tek parça satırları `true`, TOPLAM ve "TOPLAM − x" satırları `false`. Çıkarılmış toplamlar nasıl kuruluyor? `ReferenceEquals` (:59) neden ada göre karşılaştırmaktan daha güvenli? Tek parçada neden "TOPLAM − x" satırı yok? |
-| Ablation.cs:62–64 | TOPLAM(hepsi) neden önce çalışıyor? |
-| Ablation.cs:66–71 | **`SkipReason`.** Tek parça satırıysa ve TOPLAM eşiği 1'in üstündeyse gerekçe, değilse `null` döner. Neden yalnızca eşiğe bakıyor? (Bölüm 2.14, not 3.) |
-| Ablation.cs:73–80 | Her satır kendi eşiğiyle bir kez çalışıyor. Sabit eşikli ikinci çalıştırma yalnızca `SkipReason` `null` ise yapılıyor. Yoksa rapor yerine gerekçe saklanıyor. TOPLAM satırı bir kez çalışıyor. Aynı bölme, aynı "şimdi", aynı veri. |
-| [EvaluationRunner.cs:214–215, :229–232](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs) | Sabit eşik neden yalnızca geçmiş veri testinde kabul ediliyor? ([ThresholdTests.cs:222–225](../../tests/Fraud.Signals.Tests/ThresholdTests.cs)) |
-| Ablation.cs:91–107 | Tablo hangi "tanım gereği" notlarını basıyor ve hangi koşulda? |
-| Ablation.cs:109 | "Eşik 1'den büyükse sinyal hiç alarm vermez" notu ne demek? Notta neden "G4 ayar kontrolleri" yazıyor? |
-| Ablation.cs:110–111 | **İki farkın açıklaması.** Kendi cümlelerinle yeniden yaz. |
-| Ablation.cs:120–131 | İki fark nasıl basılıyor? İkinci farkın yanında neden ayrıca recall yazılıyor? Sabit eşikli rapor yoksa ne basılıyor (:128–131)? |
-| Ablation.cs:146–161 | Fark nasıl hesaplanıyor? Küçük hücrede neden fark da yazılmıyor? Fark bir sayıyı nasıl açığa çıkarabilirdi? |
+| Ablation.cs:54–65 | **"TOPLAM − x" ve `PartCount`.** Her satır artık kaç parçadan oluştuğunu taşıyor: Tek sinyal satırı 1, TOPLAM `parts.Count`, "TOPLAM − x" `parts.Count − 1`. Bu sayı yalnızca yapıdan gelir. Aynı zamanda satırın alabileceği en yüksek puandır, çünkü her parça 0 ya da 1 verir (:57). Çıkarılmış toplamlar nasıl kuruluyor? `ReferenceEquals` (:64) neden ada göre karşılaştırmaktan daha güvenli? Tek parçada neden "TOPLAM − x" satırı yok? |
+| Ablation.cs:67–69 | TOPLAM(hepsi) neden önce çalışıyor? |
+| Ablation.cs:71–72 | **`SkipReason`** artık yalnızca `FixedThresholdSkipReason(partCount, full.Threshold)` çağırıyor. |
+| Ablation.cs:84–98 | **`FixedThresholdSkipReason`.** Kural: `partCount < fullThreshold` ise gerekçe, değilse `null`. Neden `<`, neden `≤` değil? (Bölüm 2.15, not 5.) Neden yalnızca parça sayısına ve eşiğe bakıyor? (Bölüm 2.14, not 3.) `public static` olması neyi kolaylaştırıyor? (Doğrudan test edilebiliyor: ThresholdTests.cs:248–266.) |
+| Ablation.cs:74–81 | Her satır kendi eşiğiyle bir kez çalışıyor. Sabit eşikli ikinci çalıştırma yalnızca gerekçe `null` ise yapılıyor. Yoksa rapor yerine gerekçe saklanıyor. TOPLAM satırı bir kez çalışıyor. Aynı bölme, aynı "şimdi", aynı veri. |
+| [EvaluationRunner.cs:273–274, :288–291](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs) | Sabit eşik neden yalnızca geçmiş veri testinde kabul ediliyor? ([ThresholdTests.cs:298–301](../../tests/Fraud.Signals.Tests/ThresholdTests.cs)) |
+| Ablation.cs:108–124 | Tablo hangi "tanım gereği" notlarını basıyor ve hangi koşulda? |
+| Ablation.cs:126 | "Eşik 1'den büyükse sinyal hiç alarm vermez" notu ne demek? Notta neden "G4 ayar kontrolleri" yazıyor? |
+| Ablation.cs:127–128 | **İki farkın açıklaması.** Kendi cümlelerinle yeniden yaz. |
+| Ablation.cs:137–149 | İki fark nasıl basılıyor? İkinci farkın yanında neden ayrıca recall yazılıyor? Sabit eşikli rapor yoksa ne basılıyor (:145–148)? |
+| Ablation.cs:152–157 | Tabaka satırları ana raporla **aynı biçimleyiciyi** (`StratumLabel`, `FormatStratum`) kullanıyor. Neden önemli? (Ablasyon tablosu G2'nin "yeterli örnek yok" kuralını ve Türkiye alt kümesinin tümleyen kuralını delmesin. Test: G2ReportTests.cs:102–106.) |
+| Ablation.cs:164–179 | Fark nasıl hesaplanıyor? Küçük hücrede neden fark da yazılmıyor? Fark bir sayıyı nasıl açığa çıkarabilirdi? |
 | [EvaluationConfig.cs:268–272](../../src/Fraud.Evaluation/EvaluationConfig.cs) | Ablasyon kilitli kipte neden reddediliyor? Kilitli testte birden çok sinyal denemek hangi kuralı bozardı? |
-| [ThresholdTests.cs:103–123](../../tests/Fraud.Signals.Tests/ThresholdTests.cs) | Bu veride TOPLAM eşiği 1'in üstünde. "TOPLAM − x" satırlarında sabit eşik neden TOPLAM'ınkine eşit olmalı (:116–117)? :118–119'daki `^` (özel veya) neyi şart koşuyor? (Her satırda ya rapor ya gerekçe var, ikisi birden ya da hiçbiri değil.) |
-| ThresholdTests.cs:125–131, :194–220 | `AlwaysOneSignal` her birime 1 veriyor. TOPLAM eşiğini 1'in üstüne çıkarmak için neden işe yarıyor? Test tek parça satırlarında neyi, "TOPLAM − x" satırlarında neyi bekliyor? |
+| [ThresholdTests.cs:103–128](../../tests/Fraud.Signals.Tests/ThresholdTests.cs) | İki parça, TOPLAM eşiği 1'in üstünde. Şimdi "TOPLAM − x" satırlarında da gerekçe bekleniyor (:118–122). Eskiden bu test tam tersini bekliyordu. :123–124'teki `^` (özel veya) neyi şart koşuyor? (Her satırda ya rapor ya gerekçe var, ikisi birden ya da hiçbiri değil.) |
+| ThresholdTests.cs:130–136 | `ConstSignal` her birime aynı puanı veriyor. TOPLAM eşiğini istenen yere koymak için neden işe yarıyor? |
+| ThresholdTests.cs:199–221 | İki sabit 1 + baseline: G4'ün tamamı 2 alıyor, eşik `BitIncrement(2)` (:214). Neden hem tek parça hem 2 parçalı satırlar "uygulanmaz"? |
+| ThresholdTests.cs:223–246 | Dört parça, aynı eşik: "TOPLAM − x" satırlarında 3 parça kalıyor ve çalışıyor. Tek parça satırları yine "uygulanmaz". |
+| ThresholdTests.cs:248–266 | Sınır örnekleri: (3, 3.0) çalışır, (2, 3.0) atlanır, (2, `BitIncrement(2)`) atlanır, (3, `BitIncrement(2)`) çalışır. Her birini kâğıtta doğrula. |
+| ThresholdTests.cs:276–296 | İki parça ama TOPLAM eşiği 1 ya da altında: Bu kez "TOPLAM − x" satırları çalışmalı. Bu test neyi kanıtlıyor? ("Uygulanmaz" kararı iki parça olmaktan değil, eşikten geliyor.) |
 | [AblationTests.cs:53–67, :69–83](../../tests/Fraud.Signals.Tests/AblationTests.cs) | Ablasyon çıktısında neden hiçbir ad geçmiyor? Satır sırası nasıl sabitleniyor? Baseline recall'u neden yaklaşık %50 bekleniyor? |
 
 **İki fark neden gerekli?** Önce iki soruyu ayır:
@@ -234,7 +242,9 @@ Bu kuralın bir de ikinci yüzü var: Kurgu tabakası yalnızca **ölçüm** ola
 
 Tek başına hiçbiri doğru hikâyeyi anlatmaz. Yalnızca birincisine bakarsan, eşik kaymasını sinyalin katkısı sanırsın. Yalnızca ikincisine bakarsan, her sinyal "katkı veriyor" görünür, çünkü fark negatiften başka bir şey olamaz. İkisi birlikte okununca ayrım yapılabilir: Sabit eşikte büyük kayıp, kendi eşiğinde küçük kayıp ya da kazanç varsa, sinyal alarmlara katkı veriyor ama gürültüsü eşiği yukarı itiyor demektir. Alıştırma B9 bunu sayılarla gösteriyor.
 
-**Tek parça satırında neden "uygulanmaz"?** (2026-11-24.) Tek parça 0 ya da 1 puan verir. TOPLAM eşiği 1'in üstündeyse ("en az 2 parça"), tek parça o eşiğe hiçbir zaman ulaşamaz. Recall her durumda 0 çıkar, fark da her durumda "−TOPLAM recall" olur. Bu sayı sinyal hakkında hiçbir şey söylemez. Basılsaydı okuyan onu "bu sinyal tek başına 40 puan kaybettiriyor" diye yanlış okurdu. Bu yüzden rapor sayı yerine gerekçe yazıyor: "TOPLAM eşiğiyle uygulanmaz: tek parça en çok 1 puan alır, TOPLAM eşiği 1'in üstünde". Bir sınır da var: Yalnızca iki parça varsa "TOPLAM − x" satırı da aslında tek parçadır, ama `SinglePart` bayrağı `false` olduğu için sayı yine basılır (Bölüm 5.3, madde 2).
+**Bir satır ne zaman "uygulanmaz" alır?** (2026-11-24, iki adımda.) k parçalı bir satır en çok k puan alır. TOPLAM eşiği k'den büyükse satır o eşiğe hiçbir zaman ulaşamaz. Recall her durumda 0 çıkar, fark da her durumda "−TOPLAM recall" olur. Bu sayı sinyal hakkında hiçbir şey söylemez. Basılsaydı okuyan onu "bu sinyali çıkarmak 40 puan kaybettiriyor" diye yanlış okurdu. Bu yüzden rapor sayı yerine gerekçe yazıyor, örneğin "TOPLAM eşiğiyle uygulanmaz: 2 parçalı satır en çok 2 puan alır, TOPLAM eşiğine ulaşamaz".
+
+İlk düzeltme yalnızca tek parça satırlarını kapsıyordu. İki parçalı bir koşuda "TOPLAM − x" satırı da aslında tek parçaydı, ama elle verilen bir bayrak yüzünden sayı yine basılıyordu. İkinci düzeltme kuralı "parça sayısı < TOPLAM eşiği" olarak genişletti. Kadircan bu genişletmeyi **hiçbir sonuç görülmeden** onayladı ([DECISIONS.md](../DECISIONS.md), "2026-11-24: G2 kuralları raporda uygulanır, ablasyonda tek parça kuralı düzeltildi", madde 4). Bu önemli: Bir sunum kuralı sonuca bakılarak değişseydi, kötü görünen sayıları gizlemenin bir yolu olurdu.
 
 ### 2.11 Yapılandırma, katalog ve komutlar
 
@@ -302,7 +312,7 @@ Engellemek için iki şey gerekiyor: Liste dondurma anındaki listeyle aynı olm
 | G2Wikidata.cs:117–133 | `HostOf` hangi adresleri reddediyor? Neden IP adresi ve kullanıcı bilgili adres yok? |
 | G2Wikidata.cs:373–390 | Türkiye etiketi kayıtlı alan adı başına VEYA'lanıyor. Neden? |
 | G2Wikidata.cs:392–397, [ControlSelection.cs:14–23](../../src/Fraud.Collectors/Control/ControlSelection.cs) | Seçim: elemeler, sonra `SHA-256(tohum + "|" + ad)` sırası, ilk 300. Neden rastgele sayı üreteci yok? |
-| G2Wikidata.cs:408–421 | 100'den az kalırsa ne oluyor? Grup yine kuruluyor mu? `enough_for_rates` nereye yazılıyor? Bu bayrağı değerlendirme raporu okuyor mu? (Hayır. Bölüm 5.3, madde 1.) |
+| G2Wikidata.cs:408–421 | 100'den az kalırsa ne oluyor? Grup yine kuruluyor mu? `enough_for_rates` nereye yazılıyor? Değerlendirme raporu bu manifest bayrağını okuyor mu? (Hayır, bilerek okumuyor. Aynı kuralı veritabanındaki kurulum kaydından okuyor. Bölüm 2.15, not 1.) |
 | G2Wikidata.cs:168–184 | İstemci: otomatik yeniden deneme yok, yönlendirme izlenmiyor, User-Agent'ta kişisel e-posta değil projenin açık depo adresi var. Neden? |
 | [G2WikidataTests.cs:89, :151, :178, :205](../../tests/Fraud.Integration.Tests/Control/G2WikidataTests.cs) | Dört testin adını oku. Her biri hangi kuralı sabitliyor? |
 
@@ -310,7 +320,7 @@ Engellemek için iki şey gerekiyor: Liste dondurma anındaki listeyle aynı olm
 
 ### 2.14 Dört C# okuma notu (2026-11-24 düzeltmeleri)
 
-**Not 1. `record with { }` ile kopya.** [EvaluationRunner.cs:268–269](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)
+**Not 1. `record with { }` ile kopya.** [EvaluationRunner.cs:327–328](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)
 
 ```csharp
 return Report(...)
@@ -323,7 +333,7 @@ Neden böyle yazılmış: `Report(...)` yardımcısını hem `Run` hem `RunProsp
 
 Dikkat: Kopya **sığdır** (shallow). Listeler kopyalanmaz, iki nesne aynı listeyi gösterir. Burada sorun değil, çünkü listeler `IReadOnlyList` ve kimse onları değiştirmiyor.
 
-**Not 2. `CompositionText` içindeki iç içe üçlü işleç.** [EvaluationRunner.cs:146–151](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)
+**Not 2. `CompositionText` içindeki iç içe üçlü işleç.** [EvaluationRunner.cs:151–156](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)
 
 ```csharp
 p.Count < SmallCellLimit ? Cell(p.Count) : anySmall ? "-" : Cell(p.Count)
@@ -337,18 +347,18 @@ p.Count < SmallCellLimit ? Cell(p.Count) : anySmall ? "-" : Cell(p.Count)
 | Hayır | Evet | `-` |
 | Hayır | Hayır | sayının kendisi |
 
-Neden ikinci satır var: Toplam `n` raporda zaten açık yazılı (:70). G4a "<5" diye gizlenip G4b açık yazılsaydı, okuyan `n − G4b` işlemiyle gizli sayıyı bulurdu. Buna **tümleyen kuralı** denir. Recall'daki `IsSmallCell` (:164–168) aynı fikri izliyor: "11/12" de tek kalan birimi ele verir. Kendini sına: (3, 200) için çıktı ne? Cevap: `G4a=<5, G4b=-` (ThresholdTests.cs:189).
+Neden ikinci satır var: Toplam `n` raporda zaten açık yazılı (:70). G4a "<5" diye gizlenip G4b açık yazılsaydı, okuyan `n − G4b` işlemiyle gizli sayıyı bulurdu. Buna **tümleyen kuralı** denir. Recall'daki `IsSmallCell` (:223–227) aynı fikri izliyor: "11/12" de tek kalan birimi ele verir. Kendini sına: (3, 200) için çıktı ne? Cevap: `G4a=<5, G4b=-` (ThresholdTests.cs:194).
 
-Okunabilirlik notu: İç içe üçlü işleç kısa ama okunması zor. Mülakatta "bunu nasıl daha okunur yazardın" diye sorulursa bir `switch` ifadesi ya da yukarıdaki tablo gibi üç kollu bir `if` öner.
+Okunabilirlik notu: İç içe üçlü işleç kısa ama okunması zor. Mülakatta "bunu nasıl daha okunur yazardın" diye sorulursa bir `switch` ifadesi ya da yukarıdaki tablo gibi üç kollu bir `if` öner. Aynı kalıp, Türkiye alt kümesinin birim sayısında da var ([EvaluationRunner.cs:196–198](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Bölüm 2.15, not 3.
 
-**Not 3. `SkipReason` neden yalnızca eşiğe bakıyor?** [Ablation.cs:66–71](../../src/Fraud.Evaluation/Running/Ablation.cs)
+**Not 3. "Uygulanmaz" kararı neden yalnızca eşiğe ve parça sayısına bakıyor?** [Ablation.cs:71–72, :84–98](../../src/Fraud.Evaluation/Running/Ablation.cs)
 
-`SkipReason` bir yerel fonksiyon. Dışarıdaki `full` değişkenini kullanıyor ve yalnızca iki şeye bakıyor: satır tek parça mı ve `full.Threshold > 1` mi. Hiçbir recall'a, hiçbir yanlış alarm sayısına bakmıyor. Bunun iki nedeni var:
+`SkipReason` bir yerel fonksiyon. Dışarıdaki `full` değişkenini kullanıyor ve işi `FixedThresholdSkipReason(partCount, full.Threshold)`'a bırakıyor. O da yalnızca iki sayıya bakıyor: satırın parça sayısı ve TOPLAM eşiği. Hiçbir recall'a, hiçbir yanlış alarm sayısına bakmıyor. Bunun iki nedeni var:
 
-1. **Mantık gereği kesin.** 0/1 puanlı bir parça 1'den büyük bir eşiğe asla ulaşamaz. Bunu bilmek için sonuca bakmaya gerek yok. Eşik tek başına yetiyor.
-2. **Sonuca göre sunum seçilmesin.** Koşul recall'a bakan bir kural olsaydı ("recall 0 ise yazma" gibi), neyin yazılıp neyin gizleneceği sonucu gördükten sonra seçilmiş olurdu. Bu da "sonuca göre kural değiştirme"nin raporlamadaki halidir. Eşik ise yalnızca G4 ayar kontrollerinden seçiliyor. Test verisi ona hiç dokunmuyor. Yorum bunu açıkça yazıyor: "Koşul veriye değil yalnızca eşiğe bakar" (:68).
+1. **Mantık gereği kesin.** k parçalı satır en çok k puan alır. k eşikten küçükse satır eşiğe asla ulaşamaz. Bunu bilmek için sonuca bakmaya gerek yok.
+2. **Sonuca göre sunum seçilmesin.** Koşul recall'a bakan bir kural olsaydı ("recall 0 ise yazma" gibi), neyin yazılıp neyin gizleneceği sonucu gördükten sonra seçilmiş olurdu. Bu da "sonuca göre kural değiştirme"nin raporlamadaki halidir. Eşik ise yalnızca G4 ayar kontrollerinden seçiliyor. Test verisi ona hiç dokunmuyor. Yorum bunu açıkça yazıyor: "Yalnızca parça sayısına ve eşiğe bakar, sonuca bakmaz" (:85–86).
 
-Not: `SkipReason` satır başına iki kez çağrılıyor (:77 ve :80). Saf bir fonksiyon olduğu için iki çağrı hep aynı cevabı verir. Sonucu bir değişkene atamak daha temiz olurdu, ama doğruluk değişmez.
+Not: `SkipReason` satır başına iki kez çağrılıyor (:78 ve :81). Saf bir fonksiyon olduğu için iki çağrı hep aynı cevabı verir. Sonucu bir değişkene atamak daha temiz olurdu, ama doğruluk değişmez. `<` ile `≤` farkı Bölüm 2.15, not 5'te.
 
 **Not 4. Yükleyici testindeki enum döngüsü neden bilerek kırılır?** [EvaluationLoaderTests.cs:427–437](../../tests/Fraud.Integration.Tests/Evaluation/EvaluationLoaderTests.cs)
 
@@ -364,6 +374,73 @@ foreach (var group in Enum.GetValues<Fraud.Domain.Control.ControlGroup>())
 Aynı testin ilk kısmı (:430–431), tanımlı olmayan bir değerin (99) reddedildiğini ve hata mesajında yalnızca sayının geçtiğini denetliyor. Mesajda alan adı yok (Kural 4).
 
 Neden derleyici yakalamıyor: `_ =>` kolu yoksa C# derleyicisi eksik durum için yalnızca uyarı verir. Burada ise `_ =>` kolu bilerek var, çünkü tanınmayan değerde hata fırlatıyor. Bu kol varken derleyici yeni bir grubun unutulduğunu hiç fark edemez. Emniyeti bu yüzden test ve çalışma anındaki hata sağlıyor.
+
+### 2.15 G2 kuralları raporda ve eşik sınırı (2026-11-24, ikinci kayıt)
+
+Önce bağlam: G2 kurulumunda iki önceden kayıtlı kural vardı. "100'den az üye kalırsa oran verilmez" ve "Türkiye bağı süzgeç değil etiket, alt küme ayrıca raporlanır." Bunlar kurulumda yazılıyordu ama değerlendirme raporu ikisini de uygulamıyordu. Artık uyguluyor ([DECISIONS.md](../DECISIONS.md), "2026-11-24: G2 kuralları raporda uygulanır, ablasyonda tek parça kuralı düzeltildi"). G2 eşiğe eskisi gibi girmiyor.
+
+**Not 1. "Yeterli örnek yok" bayrağı veritabanından, manifestten değil.** [EvaluationDataLoader.cs:174–193](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs), kullanıldığı yer :64 ve :74–76.
+
+`G2BelowMinimumAsync`, `control_builds` tablosundaki G2 kurulum kayıtlarının `Selected` (seçilen üye) sayısını okuyor. Kural iki durumda "yetersiz" diyor (:192): Hiç kurulum kaydı yoksa ya da herhangi bir kayıtta seçilen 100'den azsa. Neden manifest dosyası değil? Yorumda (:179–184) üç neden var:
+
+1. Kurulum kaydı üyelerle **aynı veritabanı işleminde** yazılır. Üye varsa kayıt da vardır. İkisi birbirini tutar.
+2. Manifest bu işlemden **sonra** ayrı bir dosyaya yazılır. Arada süreç durursa manifest hiç olmayabilir.
+3. Manifest `data/private` altında bir dosya. Elle değiştirilebilir.
+
+Kayıt yoksa ama G2 üyesi varsa (elle eklenmiş üye), kural "yetersiz" der. Bu **tutucu taraf**: Kuralın geçtiği kanıtlanamıyorsa oran basılmaz. Eşik sabiti de tek yerden geliyor: `G2WikidataCommands.MinimumForRates` (G2Wikidata.cs:213). Kurulum ile rapor aynı sayıyı kullanıyor. Test: [EvaluationLoaderTests.cs:439–479](../../tests/Fraud.Integration.Tests/Evaluation/EvaluationLoaderTests.cs), üç durum: 99 (yetersiz), 100 (yeterli), kayıt yok (yetersiz). Aynı test G4 biriminin bayraktan etkilenmediğini de denetliyor (:476–478).
+
+**Not 2. Oran kaynağında hiç üretilmiyor.** [MetricsCalculator.cs:94–102, :144–152](../../src/Fraud.Evaluation/Metrics/MetricsCalculator.cs)
+
+Tabakadaki tek bir birim bile işaretliyse (`members.Any(...)`, :97), tabaka `Withheld` ile kuruluyor. `Withheld` ham sayıları tutuyor ama `Rate`, aralıklar, precision ve günlük alarm `null` (:148). Neden raporda gizlemek yerine burada? Çünkü oran bir kez hesaplanırsa, onu okuyan her yer (ana rapor, ablasyon tablosu, ileride bir panel ya da dışa aktarma) gizlemeyi ayrı ayrı hatırlamak zorunda kalır. Biri unutursa oran sızar. Kaynakta hiç üretilmeyen bir sayıyı kimse yanlışlıkla basamaz. Rapor tarafı da ayrıca bu satırlarda yalnızca "yeterli örnek yok" ve birim sayısını yazıyor ([EvaluationRunner.cs:103–107, :185–187](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Test: [G2ReportTests.cs:79–107](../../tests/Fraud.Evaluation.Tests/G2ReportTests.cs). Bu test ablasyon tablosunu da denetliyor.
+
+Ham isabet sayısı (`Hits`) kayıtta duruyor ama raporda basılmıyor. Yalnızca birim sayısı basılıyor, o da küçük hücre kuralıyla (`Cell`).
+
+**Not 3. Türkiye alt kümesi: tümleyen kuralı ve ayrı tohum eki.** [MetricsCalculator.cs:120–142](../../src/Fraud.Evaluation/Metrics/MetricsCalculator.cs), [EvaluationRunner.cs:169–210](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)
+
+G2 tabakasından hemen sonra bir satır daha geliyor: yalnızca `TurkeyLinked == true` olan birimler. Bu satırda precision ve günlük alarm yok (:141). Alt küme bir tahmin tabanı değil, yalnızca kapsamı gösteriyor.
+
+*Tümleyen kuralı.* Raporda G2'nin tamamı zaten yazılı. Alt küme de yazılınca okuyan çıkarma yapabilir: "tamamı − alt küme = Türkiye'ye bağlı olmayanlar". Alt küme büyük görünse bile tümleyen küçük olabilir. `FormatStratum` bunu şöyle engelliyor:
+- Tümleyeni kuruyor: isabet = tamamın isabeti − alt kümenin isabeti, birim = tamamın birimi − alt kümenin birimi (:191–194).
+- Alt küme **ya da** tümleyen küçük hücreyse hiçbir sonuç sayısı yazmıyor, yalnızca birim sayısı (:204–207). "≥36/40" biçimindeki kuyruk da yazılmıyor, çünkü o da tümleyenin küçük olduğunu ele verir.
+- Birim sayısı da aynı kurala uyuyor (:196–198). Tümleyenin birim sayısı 5'ten azsa alt kümenin birim sayısı "-" yazılıyor. Burada da Bölüm 2.14, not 2'deki iç içe üçlü işleç var.
+
+Elle örnek (G2ReportTests.cs:121–126): Tamamı 30/100, alt küme 27/60. Tümleyen 3/40. Alt küme "27/60" yazılsaydı 30 − 27 = 3 geri bulunurdu. Bu yüzden yalnızca "test birimi=60" yazılıyor.
+
+*Ayrı tohum eki.* Alt kümenin bootstrap tohumu, tamamın tohumuna `-tr` eklenerek kuruluyor (:139–140). Neden? Tohum, `Rate` içinde `BootstrapSeed + "|" + seedSuffix` diye birleşiyor (:188). Alt küme kendi ekini almasaydı iki seçenek vardı: Ya tamamla aynı tohumu kullanırdı (iki satırın yeniden örneklemesi birbirine bağlanırdı), ya da tamamın tohumu değiştirilirdi. Bu da daha önce hesaplanmış bütün G2 aralıklarını değiştirirdi. Yeni bir ek vermek, eski sonuçları bayt bayt aynı bırakıyor. Yorum da bunu söylüyor: "Tamamının tohumu değişmez, eski sonuçlar aynı kalır."
+
+**Not 4. `Subject` içinde `Group`'u okuyan `init` erişimcisi.** [Subject.cs:149–185](../../src/Fraud.Evaluation/Model/Subject.cs)
+
+```csharp
+public bool? TurkeyLinked
+{
+    get => _turkeyLinked;
+    init
+    {
+        if (value is not null && Group != SubjectGroup.ControlFinanceNews) throw ...;
+        _turkeyLinked = value;
+    }
+}
+```
+
+`init`, özelliğin yalnızca nesne kurulurken atanabileceği anlamına geliyor: kurucuda ya da `new Subject(...) { TurkeyLinked = true }` gibi bir nesne başlatıcısında. Burada `init` bloğu bir doğrulama yapıyor ve `Group`'u okuyor. Bu neden güvenli? Çünkü nesne başlatıcısı (süslü parantezli kısım) kurucudan **sonra** çalışır. Kurucu `Group`'u zaten doldurmuştur (:110). Yorum bunu açıkça yazıyor (:158).
+
+Ne kazanıyoruz: Türkiye etiketi G2 dışında bir birime **hiç** konamıyor. Yanlış etiketli bir birim ölçüme giremiyor (Türkiye alt kümesi yanlışlıkla G4'te bir satır üretemez). `BuildBelowMinimum` aynı kalıbı kullanıyor: Pozitif bir birime konamıyor (:176–181). Testler: [G2ReportTests.cs:144–151](../../tests/Fraud.Evaluation.Tests/G2ReportTests.cs).
+
+Dikkat edilecek iki ayrıntı. (1) Değer bir alanda (`_turkeyLinked`) tutuluyor, çünkü `init` bloğu olan bir özellik otomatik özellik olamaz. (2) `with` ile kopyalarken de `init` çalışır. Yani `subject with { TurkeyLinked = true }` bir G4 biriminde de hata fırlatır. Doğrulama kopyada da korunuyor.
+
+**Not 5. Neden `<`, neden `≤` değil?** [Ablation.cs:88–96](../../src/Fraud.Evaluation/Running/Ablation.cs)
+
+Alarm kuralı "puan ≥ eşik" ([Predictor.cs:40](../../src/Fraud.Evaluation/Running/Predictor.cs)). `ThresholdSelector` iki türlü eşik döndürebiliyor (Predictor.cs:75): Ya ayardaki bir puanın kendisi (ör. tam 3) ya da bir puanın hemen üstündeki `double` (`Math.BitIncrement(2)` ≈ 2,0000000000000004, yani "en az 3 parça"). k parçalı satır en çok k puan alır. Satır eşiğe ancak k ≥ eşik ise ulaşabilir. "Ulaşamaz" demek k < eşik demek.
+
+| k | Eşik | `k < eşik`? | Sonuç |
+|---|---|---|---|
+| 3 | 3,0 | Hayır | Çalışır. 3 puanlık birim 3 ≥ 3 ile alarm verir. |
+| 2 | 3,0 | Evet | Uygulanmaz. |
+| 2 | `BitIncrement(2)` | Evet | Uygulanmaz. 2, 2,0000000000000004'ten küçük. |
+| 3 | `BitIncrement(2)` | Hayır | Çalışır. |
+| 1 | 1,0 | Hayır | Çalışır. |
+
+`≤` kullanılsaydı, k = 3 ve eşik tam 3 olan satır "uygulanmaz" sayılırdı. Oysa o satır eşiğe ulaşabilir ve anlamlı bir fark verir. Bilgi taşıyan bir sayı yanlışlıkla gizlenirdi. Testler: [ThresholdTests.cs:248–266](../../tests/Fraud.Signals.Tests/ThresholdTests.cs). Kayan nokta karşılaştırması burada güvenli, çünkü k bir tam sayı ve `BitIncrement` en küçük adımı atıyor. Hiçbir tam sayı 2 ile `BitIncrement(2)` arasına düşemez.
 
 ---
 
@@ -410,7 +487,7 @@ Sonra şunu cevapla: Belirteç listesinde yalnızca `kalem` varsa (normalleşinc
 (a) TOPLAM(hepsi)'nin eşiği ve recall'u?
 (b) "TOPLAM − brand" (yani yalnızca b) ve "TOPLAM − baseline" (yalnızca m) için kendi eşikleri ve recall'ları?
 (c) Her iki satır için iki farkı hesapla: kendi eşiğiyle ve TOPLAM eşiğiyle.
-(d) Küçük hücre kuralına göre raporda hangi farklar "-" görünür?
+(d) Raporda hangi farklar "-" görünür, hangileri "uygulanmaz" yazar? Neden?
 (e) Sonucu iki cümleyle yorumla: Baseline bu toplamda yardım mı ediyor, zarar mı?
 
 **B10. Veriliş kimliği.** Aynı ad için pencerede altı sertifika satırı var (yayıncı, seri, tür):
@@ -486,21 +563,22 @@ Taslak: Hafta 6 rehberi 5.5'teki kalıp aynen geçerli. Sinyalleri hangi gözlem
 
 ### 5.2 Kapanan maddeler (2026-11-21 ve 2026-11-24)
 
-1. **Eşik seçimi tanım gereği 1 alan kontrolleri içeriyordu.** KAPANDI, 2026-11-21. Eşik yalnızca G4 ayar kontrollerinden seçiliyor ([EvaluationRunner.cs:252–261](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Başka bir grup listesi yapılandırmada reddediliyor ([EvaluationConfig.cs:242](../../src/Fraud.Evaluation/EvaluationConfig.cs)). Karar sonuç görülmeden [DECISIONS.md](../DECISIONS.md)'ye tarihli girdi. Bölüm 2.9.
-2. **Patlama sinyalinde çift sayım riski.** KAPANDI, 2026-11-21. Sayım (yayıncı, seri) çiftinin özetine göre ([EvaluationDataLoader.cs:150–159](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs), [CertificateBurstSignal.cs:12–14](../../src/Fraud.Signals/CertificateBurstSignal.cs)). Bölüm 2.6.
-3. **Ablasyonda her satır kendi eşiğini seçiyordu, raporda yazmıyordu.** KAPANDI, 2026-11-21. Rapor bunu açıkça yazıyor ve ikinci bir fark, TOPLAM'ın eşiği sabitken fark da basıyor ([Ablation.cs:62–80, :110–111, :120–131](../../src/Fraud.Evaluation/Running/Ablation.cs)). Bölüm 2.10.
+1. **Eşik seçimi tanım gereği 1 alan kontrolleri içeriyordu.** KAPANDI, 2026-11-21. Eşik yalnızca G4 ayar kontrollerinden seçiliyor ([EvaluationRunner.cs:311–320](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Başka bir grup listesi yapılandırmada reddediliyor ([EvaluationConfig.cs:242](../../src/Fraud.Evaluation/EvaluationConfig.cs)). Karar sonuç görülmeden [DECISIONS.md](../DECISIONS.md)'ye tarihli girdi. Bölüm 2.9.
+2. **Patlama sinyalinde çift sayım riski.** KAPANDI, 2026-11-21. Sayım (yayıncı, seri) çiftinin özetine göre ([EvaluationDataLoader.cs:154–164](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs), [CertificateBurstSignal.cs:12–14](../../src/Fraud.Signals/CertificateBurstSignal.cs)). Bölüm 2.6.
+3. **Ablasyonda her satır kendi eşiğini seçiyordu, raporda yazmıyordu.** KAPANDI, 2026-11-21. Rapor bunu açıkça yazıyor ve ikinci bir fark, TOPLAM'ın eşiği sabitken fark da basıyor ([Ablation.cs:67–81, :127–128, :137–149](../../src/Fraud.Evaluation/Running/Ablation.cs)). Bölüm 2.10.
 4. **Kilitli kipte marka listesi kayda bağlı değildi (S1).** KAPANDI. Liste G1 taahhüdünden üretiliyor. Özeti yapılandırmada dondurulmuş ve kilit kaydına yazılıyor ([SignalCommands.cs:75–91](../../src/Fraud.Collectors/Evaluation/SignalCommands.cs), [LockedRunGuard.cs:6–9](../../src/Fraud.Evaluation/Running/LockedRunGuard.cs)). Bölüm 2.12.
-5. **Eski yorum yanlış iddia ediyordu, süzgeç yalnızca gruba bakıyordu.** KAPANDI, 2026-11-24. [BaselineSignal.cs:14](../../src/Fraud.Signals/BaselineSignal.cs) artık "bugün yalnızca G3'ün K kısmı; G4b yalnızca N'den kurulur" diyor. Eşik süzgecinde beşinci koşul var: `s.Subgroup != Subgroup.FrameTermConditioned` ([EvaluationRunner.cs:257–258](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Test: [ThresholdTests.cs:133–160](../../tests/Fraud.Signals.Tests/ThresholdTests.cs). Bölüm 2.9.
-6. **Bilinmeyen grup eşiğe düşüyordu.** KAPANDI, 2026-11-24. `GroupOf` her grubu açıkça yazıyor, tanınmayan grupta hata fırlatıyor ([EvaluationDataLoader.cs:217–228](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs)). Test: [EvaluationLoaderTests.cs:423–437](../../tests/Fraud.Integration.Tests/Evaluation/EvaluationLoaderTests.cs). Bölüm 2.14, not 4.
-7. **Eşik kümesinin bileşimi yazılmıyordu.** KAPANDI, 2026-11-24. Rapor "Eşik kümesi (ayar): G4a=..., G4b=..." satırını küçük hücre ve tümleyen kuralıyla basıyor ([EvaluationRunner.cs:71–74, :142–151, :272–281](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Testler: [ThresholdTests.cs:162–192](../../tests/Fraud.Signals.Tests/ThresholdTests.cs). Bölüm 2.14, not 2. Not: Döküm yalnızca bileşimi gösteriyor. "Eşik çoğunlukla köklü sitelere dayanıyor olabilir" sınırı hâlâ geçerli, artık görünür durumda.
-8. **Tek parça satırlarında "TOPLAM eşiğiyle" farkı anlamsızdı.** KAPANDI, 2026-11-24. TOPLAM eşiği 1'in üstündeyse tek parça satırında sayı yerine "uygulanmaz" ve gerekçe yazılıyor. Karar yalnızca eşikten veriliyor, sonuçtan değil ([Ablation.cs:66–80, :128–131](../../src/Fraud.Evaluation/Running/Ablation.cs)). Test: [ThresholdTests.cs:194–220](../../tests/Fraud.Signals.Tests/ThresholdTests.cs). Bölüm 2.14, not 3.
+5. **Eski yorum yanlış iddia ediyordu, süzgeç yalnızca gruba bakıyordu.** KAPANDI, 2026-11-24. [BaselineSignal.cs:14](../../src/Fraud.Signals/BaselineSignal.cs) artık "bugün yalnızca G3'ün K kısmı; G4b yalnızca N'den kurulur" diyor. Eşik süzgecinde beşinci koşul var: `s.Subgroup != Subgroup.FrameTermConditioned` ([EvaluationRunner.cs:316–317](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Test: [ThresholdTests.cs:138–165](../../tests/Fraud.Signals.Tests/ThresholdTests.cs). Bölüm 2.9.
+6. **Bilinmeyen grup eşiğe düşüyordu.** KAPANDI, 2026-11-24. `GroupOf` her grubu açıkça yazıyor, tanınmayan grupta hata fırlatıyor ([EvaluationDataLoader.cs:243–254](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs)). Test: [EvaluationLoaderTests.cs:423–437](../../tests/Fraud.Integration.Tests/Evaluation/EvaluationLoaderTests.cs). Bölüm 2.14, not 4.
+7. **Eşik kümesinin bileşimi yazılmıyordu.** KAPANDI, 2026-11-24. Rapor "Eşik kümesi (ayar): G4a=..., G4b=..." satırını küçük hücre ve tümleyen kuralıyla basıyor ([EvaluationRunner.cs:71–74, :147–156, :331–340](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Testler: [ThresholdTests.cs:167–197](../../tests/Fraud.Signals.Tests/ThresholdTests.cs). Bölüm 2.14, not 2. Not: Döküm yalnızca bileşimi gösteriyor. "Eşik çoğunlukla köklü sitelere dayanıyor olabilir" sınırı hâlâ geçerli, artık görünür durumda.
+8. **Tek parça satırlarında "TOPLAM eşiğiyle" farkı anlamsızdı.** KAPANDI, 2026-11-24. TOPLAM eşiği 1'in üstündeyse tek parça satırında sayı yerine "uygulanmaz" ve gerekçe yazılıyor. Karar yalnızca eşikten veriliyor, sonuçtan değil. Madde 10 bu kuralı genişletti. Bölüm 2.14, not 3.
+9. **G2'nin "100 altı" kuralı ve Türkiye alt kümesi raporda uygulanmıyordu.** KAPANDI, 2026-11-24 (ikinci kayıt). Bayrak veritabanındaki kurulum kaydından okunuyor ([EvaluationDataLoader.cs:174–193](../../src/Fraud.Collectors/Evaluation/EvaluationDataLoader.cs)). Oran kaynağında hiç üretilmiyor ([MetricsCalculator.cs:94–102](../../src/Fraud.Evaluation/Metrics/MetricsCalculator.cs)). Türkiye alt kümesi tümleyen kuralıyla ayrı satırda ([MetricsCalculator.cs:120–142](../../src/Fraud.Evaluation/Metrics/MetricsCalculator.cs), [EvaluationRunner.cs:169–210](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Testler: [G2ReportTests.cs](../../tests/Fraud.Evaluation.Tests/G2ReportTests.cs), [EvaluationLoaderTests.cs:439–479](../../tests/Fraud.Integration.Tests/Evaluation/EvaluationLoaderTests.cs). Bölüm 2.15, not 1–4.
+10. **İki parçalı ablasyonda "TOPLAM − x" satırı da tek parçaydı ama sayı basılıyordu.** KAPANDI, 2026-11-24 (ikinci kayıt). Kural "parça sayısı < TOPLAM eşiği" olarak genişletildi. Kadircan bunu **hiçbir sonuç görülmeden** onayladı ([DECISIONS.md](../DECISIONS.md), ikinci 2026-11-24 kaydı, madde 4). Kod: [Ablation.cs:54–65, :84–98](../../src/Fraud.Evaluation/Running/Ablation.cs). Testler: [ThresholdTests.cs:103–128, :199–296](../../tests/Fraud.Signals.Tests/ThresholdTests.cs). Bölüm 2.10 ve 2.15, not 5.
 
 ### 5.3 Kodda hâlâ açık noktalar (kod tarafına iletilecek)
 
-Kadircan, bunları okurken buldum. Hiçbiri bugünkü sonucu bozmuyor. Bu listenin eski 1–4. maddeleri 2026-11-24'te kapandı ve Bölüm 5.2'ye 5–8. madde olarak taşındı. Eski 5. madde açık kaldı ve aşağıda 1. madde oldu.
+Kadircan, bu listenin bütün eski maddeleri kapandı (Bölüm 5.2, madde 5–10). Okurken bir küçük nokta daha buldum. Bugünkü sonucu bozmuyor.
 
-1. **G2'nin "100 altı" kuralı değerlendirme raporunda zorlanmıyor (Hafta 8'e kaldı).** [G2Wikidata.cs:408–421](../../src/Fraud.Collectors/Control/G2Wikidata.cs) yalnızca ekrana uyarı basıyor ve manifeste `enough_for_rates` yazıyor. Değerlendirme raporu bu bayrağı okumuyor. Test bölmesinde 10 ve üstü G2 birimi varsa oran basılır ([EvaluationConfig.cs:173](../../src/Fraud.Evaluation/EvaluationConfig.cs)). Ayrıca karar kaydı "Türkiye'ye bağlı alt küme ayrı raporlanır" diyor, ama Türkiye etiketi değerlendirme modeline (`Subject`) taşınmıyor. Öneri: İkisini de değerlendirme raporunda uygulamak ya da raporda "uygulanmadı" diye yazmak.
-2. **İki parçalı ablasyonda "TOPLAM − x" de aslında tek parçadır (yeni, küçük).** `SinglePart` bayrağı yalnızca tek parça satırlarında `true` ([Ablation.cs:55, :59](../../src/Fraud.Evaluation/Running/Ablation.cs)). Yalnızca iki parça varsa "TOPLAM − x" satırı tek bir parçanın toplamıdır ve en çok 1 puan alır. TOPLAM eşiği 1'in üstündeyse bu satırın sabit eşikli farkı yine her durumda "−TOPLAM recall" olur. Kapatılan madde 8 ile aynı sorun. Test bu durumu bekliyor bile ([ThresholdTests.cs:107, :116–117](../../tests/Fraud.Signals.Tests/ThresholdTests.cs): iki parça, "TOPLAM − x" satırlarında sabit eşikli rapor dolu). Bugünkü varsayılan dört parça olduğu için gerçek çalıştırmada görünmez. Öneri: Bayrağı satırdaki parça sayısından türetmek (`kalan parça sayısı == 1`). Bu da yalnızca eşiğe ve yapıya bakan bir kural olur, sonuca bakmaz.
+1. **Türkiye alt kümesinin tümleyen kuralı yalnızca biçimleyicide.** "Yeterli örnek yok" oranı kaynağında hiç üretilmiyor (Bölüm 2.15, not 2). Türkiye alt kümesinin oranı ise üretiliyor (`Rate` dolu, [MetricsCalculator.cs:140–141](../../src/Fraud.Evaluation/Metrics/MetricsCalculator.cs)). Tümleyen kuralı yalnızca `FormatStratum` içinde uygulanıyor ([EvaluationRunner.cs:204–207](../../src/Fraud.Evaluation/Running/EvaluationRunner.cs)). Bugün iki çıktı da (ana rapor ve ablasyon tablosu) `FormatStratum`'u kullanıyor, yani sızıntı yok. Ama ileride `StratumResult`'ı başka bir yerden basan biri (panel, JSON dışa aktarma) bu kuralı atlayabilir. Öneri: Tümleyen küçükse alt küme oranını da kaynağında `null` yapmak ya da bunu sınayan bir test eklemek.
 
 ---
 
@@ -511,7 +589,7 @@ Cevapları görmeden, sesli ya da yazılı cevapla. Sonra en alttaki "Bölüm 6 
 ### 6.1 Eşik yalnızca G4'ten
 
 - **Y1.** Eskiden eşik nereden seçiliyordu? Bu, baseline'ı nasıl susturabilirdi? Sayılı bir örnekle anlat.
-- **Y2.** EvaluationRunner.cs:257–258'deki beş koşulu söyle. Her biri hangi hatayı engelliyor?
+- **Y2.** EvaluationRunner.cs:316–317'deki beş koşulu söyle. Her biri hangi hatayı engelliyor?
 - **Y3.** Runner `CalibrationGroups` alanını okumuyor. O zaman EvaluationConfig.cs:242 neden var?
 - **Y4.** Yeni kuralda G3 ve Çerçeve K'deki yanlış alarm oranı nereye yazılıyor? Neden ana sayı değil?
 - **Y5.** Yeni kuralın bedeli ne? "%1 yanlış alarm" cümlesini raporda nasıl yazarsın?
@@ -552,6 +630,15 @@ Cevapları görmeden, sesli ya da yazılı cevapla. Sonra en alttaki "Bölüm 6 
 - **C2.** `CompositionText` şu girdiler için ne yazar: (G4a=2, G4b=150), (G4a=40, G4b=150), (G4a=0, G4b=3)? İkinci sayı neden bazen "-" oluyor?
 - **C3.** `SkipReason` recall'a bakıp "recall 0 ise yazma" deseydi ne kötü olurdu? Neden yalnızca eşiğe bakmak yeterli ve güvenli?
 - **C4.** Biri `ControlGroup`'a `G5` ekler ama `GroupOf`'a eklemeyi unutursa ne olur? Hangi test düşer, neden bu iyi bir şey?
+
+### 6.7 G2 raporu ve eşik sınırı (2026-11-24, ikinci kayıt)
+
+- **R1.** "Yeterli örnek yok" bayrağı neden manifestteki `enough_for_rates` alanından değil, `control_builds` tablosundan okunuyor? Kurulum kaydı hiç yoksa ne oluyor, neden?
+- **R2.** Bu kuralda oran raporda gizlenmek yerine neden `MetricsCalculator` içinde hiç hesaplanmıyor?
+- **R3.** G2 tamamı 30/100, Türkiye alt kümesi 27/60. Raporda alt küme satırında ne yazar? Neden? Alt küme 20/60 olsaydı?
+- **R4.** Türkiye alt kümesinin bootstrap tohumuna neden `-tr` eki konuyor? Alt küme tamamla aynı tohumu kullansaydı ya da tamamın tohumu değiştirilseydi ne olurdu?
+- **R5.** `new Subject(... SubjectGroup.ControlRandom ...) { TurkeyLinked = true }` ne yapar? `init` bloğu `Group`'u okurken `Group` neden zaten doludur?
+- **R6.** `FixedThresholdSkipReason` neden `partCount <= fullThreshold` değil de `partCount < fullThreshold` kullanıyor? (3, 3.0) ve (2, `BitIncrement(2)`) için ne döner?
 
 ---
 
@@ -607,7 +694,7 @@ Cevapları görmeden, sesli ya da yazılı cevapla. Sonra en alttaki "Bölüm 6 
 (c) TOPLAM eşiği (yalnızca puan 2) sabitken iki satır da hiç alarm veremez, çünkü tek parçanın puanı en çok 1. Recall 0/50.
 - TOPLAM − brand: kendi eşiğiyle 0 − 20 = −20 puan. TOPLAM eşiğiyle 0 − 20 = −20 puan.
 - TOPLAM − baseline: kendi eşiğiyle 30 − 20 = **+10** puan. TOPLAM eşiğiyle 0 − 20 = −20 puan.
-(d) 0/50 küçük hücre (isabet < 5). Delta bu hücrelerde `null` döner, "-" basılır. Yani "TOPLAM − brand" satırının iki farkı da "-". "TOPLAM − baseline" satırında yalnızca "+10,0 puan" görünür, TOPLAM eşiğiyle farkı "-". Kâğıtta hesaplaman bu yüzden önemli. Tek parça satırlarında ("baseline", "brand") TOPLAM eşiği 1'in üstünde olduğu için sayı değil "uygulanmaz" yazar. İki parça olduğu için "TOPLAM − x" satırları da aslında tek parçalı, ama kod onlar için sabit eşikli raporu yine hesaplıyor (Bölüm 5.3, madde 2). Burada sonuç küçük hücre yüzünden zaten "-" çıkıyor.
+(d) Kendi eşiğiyle farklarda: 0/50 küçük hücre (isabet < 5). Delta bu hücrede `null` döner, "-" basılır. "TOPLAM − brand" satırında "-", "TOPLAM − baseline" satırında "+10,0 puan" görünür. TOPLAM eşiğiyle farklarda sayı hiç basılmaz. TOPLAM eşiği `BitIncrement(1)` ("en az 2 parça"). İki parça olduğu için "TOPLAM − x" satırları 1 parçalı, tek parça satırları da öyle. 1 < eşik olduğu için bütün satırlarda "uygulanmaz: 1 parçalı satır en çok 1 puan alır, TOPLAM eşiğine ulaşamaz" yazar (Bölüm 2.15, not 5). Kâğıttaki −20, kodun neden basmadığını gösteriyor: Bu sayı her durumda "−TOPLAM recall" olurdu, sinyal hakkında bilgi taşımazdı. Kâğıtta hesaplaman bu yüzden önemli.
 (e) TOPLAM eşiğinde her alarm baseline'a muhtaç: Baseline çıkarsa bütün alarmlar kaybolur. Ama baseline G4'te %3 alarm verdiği için toplamın eşiğini 2'ye itiyor. Aynı %1 bütçesiyle marka tek başına daha çok yakalıyor. Yani baseline alarmlara katkı veriyor, ama bu birleşimde gürültüsüyle zarar veriyor. Tek farka bakan biri ya "baseline zararlı" ya da "baseline vazgeçilmez" derdi. İkisi birden doğru, ama farklı soruların cevabı.
 
 **B10.**
@@ -666,7 +753,7 @@ Cevapları görmeden, sesli ya da yazılı cevapla. Sonra en alttaki "Bölüm 6 
 
 **W4.** Seçimin hangi cevaptan yapıldığını sabitler. Kurulum komutu yalnızca kaydı olan başarılı bir denemenin cevabını kabul eder. Elle düzenlenmiş ya da başka sorguyla alınmış dosya giremez. Kanıtlamadığı şey: Wikidata'daki bilginin doğru ve güncel olduğu. Kayıtlar topluluk tarafından düzenlenir.
 
-**W5.** Önceden kayıtlı metin Türkiye ile sınırlamıyordu. Süzgeç eklemek sonradan yeni bir kural eklemek olurdu, ayrıca grubu 100'ün altına düşürebilirdi. Etiket, Türkiye'ye bağlı alt kümeyi ayrıca göstermeye izin verir. 100'den az kalırsa grup yine kurulur, ekrana uyarı basılır ve manifeste `enough_for_rates=false` yazılır. Ama değerlendirme raporu bu bayrağı bugün okumuyor (Bölüm 5.3, madde 1). Kural kurulumda kayıtlı, raporda henüz zorlanmıyor.
+**W5.** Önceden kayıtlı metin Türkiye ile sınırlamıyordu. Süzgeç eklemek sonradan yeni bir kural eklemek olurdu, ayrıca grubu 100'ün altına düşürebilirdi. Etiket, Türkiye'ye bağlı alt kümeyi ayrıca göstermeye izin verir. 100'den az kalırsa grup yine kurulur, ekrana uyarı basılır ve manifeste `enough_for_rates=false` yazılır. 2026-11-24'ten beri değerlendirme raporu da kuralı uyguluyor. Bayrağı manifestten değil, veritabanındaki kurulum kaydından okuyor. O tabakada oran hiç hesaplanmıyor, yalnızca "yeterli örnek yok" yazıyor (Bölüm 2.15, not 1–2).
 
 **C1.** `with`, rapor kaydının bir kopyasını çıkarır ve kopyada yalnızca `CalibrationComposition`'ı doldurur. Özgün nesne değişmez. Doğrudan atama olmaz, çünkü özellik `init` ile tanımlı: Yalnızca nesne kurulurken atanabilir. `Report(...)` yardımcısı ileriye dönük testte de kullanılıyor. Orada eşik olmadığı için döküm boş kalmalı. Bu yüzden döküm yalnızca `Run` içinde, kopyaya ekleniyor. Kopya sığdır, listeler paylaşılır. Listeler salt okunur olduğu için bu sorun yaratmaz.
 
@@ -675,3 +762,15 @@ Cevapları görmeden, sesli ya da yazılı cevapla. Sonra en alttaki "Bölüm 6 
 **C3.** O zaman neyin yazılıp neyin gizleneceği sonuca bakılarak seçilmiş olurdu. Bu da kötü görünen sayıları saklama yolu açar ve "sonuca göre kural değiştirme"nin raporlamadaki hali olur. Eşiğe bakmak yeterli, çünkü sorun mantık gereği kesin: 0/1 puanlı bir parça 1'in üstündeki bir eşiğe hiç ulaşamaz. Güvenli, çünkü eşik yalnızca G4 ayar kontrollerinden seçiliyor ve test verisine hiç dokunmuyor.
 
 **C4.** `GroupOf` `G5` için hata fırlatır, değerlendirme durur. `EvaluationLoaderTests.cs:433–436`'daki döngü bütün enum değerlerini dolaştığı için o test düşer. Bu iyi bir şey, çünkü eskiden `G5` sessizce G4 sayılır ve eşik kümesine girerdi. Şimdi grubu ekleyen kişi, `G5`'in ölçümde hangi gruba gireceğine ve eşiğe girip girmeyeceğine açıkça karar vermek zorunda. Derleyici bunu yakalayamaz, çünkü `switch` ifadesinde `_ =>` kolu var.
+
+**R1.** Kurulum kaydı üyelerle aynı veritabanı işleminde yazılır. Üye varsa kayıt da vardır. Manifest ise bu işlemden sonra ayrı bir dosyaya yazılır. Arada süreç durursa hiç olmayabilir. `data/private` altında durduğu için elle de değiştirilebilir. Kayıt hiç yoksa (G2 üyesi elle eklenmişse) kural "yetersiz" der. Kuralın geçtiği kanıtlanamıyorsa oran basılmaz. Bu tutucu taraf: Yanlışlıkla gizlenen bir oran, yanlışlıkla basılan bir orandan daha az zarar verir.
+
+**R2.** Bir kez hesaplanan oranı okuyan her yer (ana rapor, ablasyon tablosu, ileride panel ya da dışa aktarma) gizlemeyi ayrı ayrı hatırlamak zorunda kalırdı. Biri unutursa oran sızardı. Kaynakta hiç üretilmeyen bir sayıyı kimse yanlışlıkla basamaz.
+
+**R3.** Yalnızca "test birimi=60" ve küçük hücre notu. Tümleyen 3/40: isabeti 5'ten küçük. Alt küme "27/60" yazılsaydı 30 − 27 = 3 geri bulunurdu. 20/60'ta tümleyen 10/40. İkisi de küçük değil, normal biçim basılır: "20/60 = 33.33%" (kültürden bağımsız biçim) (G2ReportTests.cs:139–141).
+
+**R4.** Tohum `BootstrapSeed + "|" + ek` diye kuruluyor. Aynı tohum iki satırın yeniden örneklemesini birbirine bağlardı. Tamamın tohumunu değiştirmek ise daha önce hesaplanmış bütün G2 aralıklarını değiştirirdi. Yeni ek, alt kümeye kendi tohumunu veriyor ve eski sonuçları bayt bayt aynı bırakıyor.
+
+**R5.** `ArgumentException` fırlatır. Türkiye etiketi yalnızca G2 için anlamlı. Nesne başlatıcısı (süslü parantez) kurucudan sonra çalışır. Kurucu `Group`'u zaten atamıştır. Aynı doğrulama `with` ile kopyalarken de çalışır.
+
+**R6.** Alarm kuralı "puan ≥ eşik". k parçalı satır eşiğe ancak k ≥ eşik ise ulaşır, yani "ulaşamaz" demek k < eşik demek. (3, 3.0) için `null` döner: Satır çalışır, çünkü 3 puanlık birim 3 ≥ 3 ile alarm verir. `≤` olsaydı bilgi taşıyan bu sayı yanlışlıkla gizlenirdi. (2, `BitIncrement(2)`) için gerekçe döner: 2, 2,0000000000000004'ten küçük, satır eşiğe ulaşamaz.
