@@ -214,3 +214,7 @@ Kadircan, ileriye dönük testin hiçbir sonucunu görmeden şu kararları verdi
 - Eşik: Dondurulmuş kurallar işaretlemiş olmalı, ayrıca Kadircan pasif kaynaklarda karar verici bir kanıt görmüş olmalı.
 - İtirazlar GitHub issue ile alınır. Issue şablonunda alan adı yazılmaması istenir.
 - SPK ve USOM bildirim kanalı henüz doğrulanmadı. Doğrulanana kadar hiçbir bildirim yapılmaz.
+
+## 2026-11-24: Karardan sonraki ağ durumu ayrı bölümde
+
+Kadircan, hiçbir ağ sonucu görmeden şunu onayladı: `net-describe` çıktısına, SPK kararından sonra ölçülen ağ durumunu gösteren ayrı bir bölüm eklenir. Bölümün başlığında "sinyal değil, yalnızca betimleme" yazar. Bu bölümdeki hiçbir sayı tespit, erken uyarı ya da precision sonucu olarak okunamaz ve raporda sinyal sonuçlarıyla aynı tabloya konmaz. Kontrol grupları için aynı ölçüm dönemi kullanılır. Küçük hücre kuralları aynen geçerlidir.
