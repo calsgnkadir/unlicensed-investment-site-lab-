@@ -150,6 +150,13 @@ docker compose --profile tools run --rm tools control-g3a-trial
 docker compose start network
 ```
 
+**Hafta 8 ağ betimlemesi ve küme analizi** (ağa istek atmaz, yalnızca veritabanını okur; `network` servisini durdurmak
+gerekmez). Yapılandırma, `eval-run` ile aynı dosyadır. Çıktıda yalnızca toplu sayılar var:
+
+```bash
+docker compose --profile tools run --rm tools net-describe --config src/Fraud.Evaluation/evaluation.example.json
+```
+
 1. G1: çıktıdaki `web_adresi` yaklaşık 66 olmalı; çok farklıysa sayfa yapısı değişmiştir, devam etmeyin.
 2. G2: Radar token'ı `deploy/linux/secrets/cloudflare_radar_token` (izin 600). Önce Radar'a deneme dışı tek bir ön
    sorgu; geçerse %80 önkoşul denemesi. Deneme kaydı ilk sorgudan önce yazılır: yarıda kalan ya da hatalı biten deneme

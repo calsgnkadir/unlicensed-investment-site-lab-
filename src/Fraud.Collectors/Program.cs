@@ -40,6 +40,7 @@ using Microsoft.Extensions.Logging;
 //   dotnet run --project src/Fraud.Collectors -- port-audit-exporter                     (port-audit durum dosyasını sunar)
 //   dotnet run --project src/Fraud.Collectors -- eval-run --mode Historical|Locked --config <dosya> [--controls <csv>] [--clusters <csv>] [--commit <sha>]
 //   dotnet run --project src/Fraud.Collectors -- eval-run --mode Prospective --config <dosya> --commitment <açık dosya> --opening <açıklama>
+//   dotnet run --project src/Fraud.Collectors -- net-describe --config <dosya>              (Hafta 8 ağ betimlemesi ve küme analizi; ağ yok, yalnızca toplu sayı)
 //   dotnet run --project src/Fraud.Collectors -- signals-brands                         (G1'den data/private/signals/brands.txt; yalnızca sayı basar)
 //   dotnet run --project src/Fraud.Collectors -- control-fetch-g1                       (tek istek, yalnızca www.bddk.org.tr)
 //   dotnet run --project src/Fraud.Collectors -- control-build-g1 --input <kaydedilmiş BDDK HTML>
@@ -65,14 +66,14 @@ const string Usage =
     "collect-internetdb [--force true] | dns-compare [--day YYYY-AA-GG] | worker | quality-report | ct-follow | migrate | " +
     "ct-sample --tiles N [--log <ad>] [--max-requests M] [--verify-root true] | " +
     "archive-sample [--count N] [--seed <metin>] [--out <klasör>] | port-audit [--once true] | port-audit-exporter | " +
-    "eval-run --mode <kip> --config <dosya> | signals-brands | commit-create | commit-prove | commit-verify | " +
+    "eval-run --mode <kip> --config <dosya> | net-describe --config <dosya> | signals-brands | commit-create | commit-prove | commit-verify | " +
     "control-fetch-g1 | control-build-g1 | control-fetch-g2-wikidata | control-build-g2-wikidata | control-build-g3 | control-build-g4a | control-build-g4b | control-g3a-trial>";
 
 var command = args.Length > 0 ? args[0] : string.Empty;
 if (command is not ("import-official-actions" or "collect-crtsh" or "collect-wayback" or "worker" or "quality-report"
     or "ct-follow" or "ct-sample" or "migrate" or "archive-sample"
     or "collect-dns" or "collect-ripestat" or "collect-internetdb" or "dns-compare" or "port-audit" or "port-audit-exporter"
-    or "eval-run" or "signals-brands" or "commit-create" or "commit-prove" or "commit-verify"
+    or "eval-run" or "net-describe" or "signals-brands" or "commit-create" or "commit-prove" or "commit-verify"
     or "control-fetch-g1" or "control-build-g1" or "control-build-g2" or "control-fetch-g2-wikidata" or "control-build-g2-wikidata" or "control-build-g3" or "control-build-g4a"
     or "control-build-g4b" or "control-g3a-trial"))
 {
@@ -284,6 +285,21 @@ switch (command)
             Console.Out,
             stop.Token,
             RepoContext.Find(gitPath: builder.Configuration["Git:Path"])).ConfigureAwait(false);
+    }
+
+    case "net-describe":
+    {
+        // Ağa istek atılmaz: Toplayıcıların yazdığı satırlar okunur. CDN/bulut listesi RIPEstat toplayıcısının ayarıyla aynı.
+        await using var scope = host.Services.CreateAsyncScope();
+        return await NetworkCommands.DescribeAsync(
+            scope.ServiceProvider.GetRequiredService<FraudDbContext>(),
+            scope.ServiceProvider.GetRequiredService<Fraud.Domain.DomainNames.IDomainNameNormalizer>(),
+            scope.ServiceProvider.GetRequiredService<Fraud.Collectors.RipeStat.RipeStatOptions>().CdnAsns,
+            EvaluationCommands.ParseArgs(args.Skip(1).ToArray()),
+            Console.Out,
+            RepoContext.Find(gitPath: builder.Configuration["Git:Path"]),
+            IpTargetFilter.PublicOnly.IsAllowed,
+            stop.Token).ConfigureAwait(false);
     }
 
     case "signals-brands":
