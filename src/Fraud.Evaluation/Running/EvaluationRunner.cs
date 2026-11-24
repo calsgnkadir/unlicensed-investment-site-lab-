@@ -97,10 +97,15 @@ public sealed record EvaluationReport(
         sb.AppendLine("Kontrol tabakaları (yanlış alarm = SPK listesinde olmayan alan adında alarm):");
         foreach (var s in Strata)
         {
-            sb.Append("  ").Append(s.Group).Append(" / ").Append(s.Subgroup).Append(s.LinkedToPositive ? " / pozitife bağlı (E05, ana orana girmez)" : string.Empty)
-                .Append(": ").Append(Format(s.FalseAlarms));
+            sb.Append("  ").Append(StratumLabel(s, " / pozitife bağlı (E05, ana orana girmez)")).Append(": ").Append(FormatStratum(s, Strata));
             // Precision ve günlük alarm, isabet sayılarından geri hesaplanabilir: Hücre küçükse (bu tabakada ya da
-            // recall'da) onlar da yazılmaz (mentör 5.4/2).
+            // recall'da) onlar da yazılmaz (mentör 5.4/2). Türkiye alt kümesinde ve "yeterli örnek yok" satırında hiç yazılmaz.
+            if (s.TurkeyLinkedSubset || s.BuildBelowMinimum)
+            {
+                sb.AppendLine();
+                continue;
+            }
+
             var hideDerived = IsSmallCell(s.FalseAlarms) || IsSmallCell(Recall);
             sb.Append("; örneklem içi precision=").Append(hideDerived ? "-" : Number(s.SamplePrecision))
                 .Append("; π=").Append(BaseRate.ToString(CultureInfo.InvariantCulture)).Append(" ile precision=")
@@ -148,6 +153,60 @@ public sealed record EvaluationReport(
         ArgumentNullException.ThrowIfNull(parts);
         var anySmall = parts.Any(p => p.Count < SmallCellLimit);
         return string.Join(", ", parts.Select(p => p.Source + "=" + (p.Count < SmallCellLimit ? Cell(p.Count) : anySmall ? "-" : Cell(p.Count))));
+    }
+
+    /// <summary>"Yeterli örnek yok" satırının metni (G2 kurulumu 100'den az üye, önceden kayıtlı kural).</summary>
+    public const string BelowMinimumText = "yeterli örnek yok";
+
+    /// <summary>Tabaka adı: grup / alt grup [/ pozitife bağlı] [/ Türkiye bağlantılı alt küme].</summary>
+    public static string StratumLabel(StratumResult s, string linkedText)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        return s.Group + " / " + s.Subgroup + (s.LinkedToPositive ? linkedText : string.Empty)
+               + (s.TurkeyLinkedSubset ? " / Türkiye bağlantılı alt küme" : string.Empty);
+    }
+
+    /// <summary>
+    /// Bir tabakanın yanlış alarm metni. Üç durum (DECISIONS 2026-11-24):
+    /// <list type="number">
+    /// <item>Kurulum "yeterli örnek yok": Oran, isabet ve aralık yazılmaz; yalnızca birim sayısı (küçük hücre kuralıyla).</item>
+    /// <item>Türkiye alt kümesi: Alt küme ya da tümleyeni (tamamı − alt küme) küçük hücreyse hiçbir sonuç sayısı yazılmaz.
+    /// Tamamı zaten basılı olduğu için tümleyenin küçük sayısı "tamamı − alt küme" çıkarmasıyla geri bulunurdu. "≥36/40"
+    /// biçimindeki kuyruk da yazılmaz: Bu da tümleyenin küçük olduğunu açığa vurur.</item>
+    /// <item>Öteki tabakalar: <see cref="Format"/>.</item>
+    /// </list>
+    /// </summary>
+    public static string FormatStratum(StratumResult s, IReadOnlyList<StratumResult> strata)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        ArgumentNullException.ThrowIfNull(strata);
+        if (!s.TurkeyLinkedSubset)
+        {
+            return s.BuildBelowMinimum
+                ? BelowMinimumText + " (kurulumda 100'den az üye): oran verilmez; test birimi=" + Cell(s.FalseAlarms.Total)
+                : Format(s.FalseAlarms);
+        }
+
+        // Alt kümenin tamamı: aynı anahtarlı, alt küme olmayan satır (MetricsCalculator onu her zaman alt kümeden önce yazar).
+        var whole = strata.Single(x => !x.TurkeyLinkedSubset && x.Group == s.Group && x.Subgroup == s.Subgroup && x.LinkedToPositive == s.LinkedToPositive)
+            .FalseAlarms;
+        var complementTotal = whole.Total - s.FalseAlarms.Total;
+        var complement = new RateResult(whole.Hits - s.FalseAlarms.Hits, complementTotal, null, null, null);
+        // Birim sayısı da tümleyen kuralına uyar: Tümleyenin birim sayısı küçükse alt kümenin sayısı "-" yazılır.
+        var total = s.FalseAlarms.Total < SmallCellLimit ? Cell(s.FalseAlarms.Total)
+            : complementTotal < SmallCellLimit ? "-"
+            : Cell(s.FalseAlarms.Total);
+        if (s.BuildBelowMinimum)
+        {
+            return BelowMinimumText + ": oran verilmez; test birimi=" + total;
+        }
+
+        if (IsSmallCell(s.FalseAlarms) || IsSmallCell(complement))
+        {
+            return "test birimi=" + total + " (küçük hücre ya da tümleyeni küçük: sayı, oran ve aralık yazılmaz)";
+        }
+
+        return Format(s.FalseAlarms);
     }
 
     private static string Line(string key, string value) => key + ": " + value;

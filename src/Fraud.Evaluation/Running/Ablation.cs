@@ -51,12 +51,16 @@ public static class Ablation
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(parts);
         var at = now ?? DateTimeOffset.UtcNow;
-        var variants = new List<(string Name, ISignal Signal, bool SinglePart)>();
-        variants.AddRange(parts.Select(p => (p.Name, p, true)));
-        variants.Add((FullName, new SumSignal(parts), false));
+        // PartCount: satırdaki sinyal kaç parçadan oluşuyor. Yalnızca yapıdan gelir, sonuca bakmaz. Tek sinyal satırı 1 parça,
+        // "TOPLAM − x" satırı (toplam − 1) parça. Eskiden burada elle verilen bir "tek parça" bayrağı vardı ve "TOPLAM − x"
+        // satırlarında hep false idi; iki parçalı koşuda "TOPLAM − x" de tek parça kaldığı halde anlamsız fark basılıyordu.
+        var variants = new List<(string Name, ISignal Signal, int PartCount)>();
+        variants.AddRange(parts.Select(p => (p.Name, p, 1)));
+        variants.Add((FullName, new SumSignal(parts), parts.Count));
         if (parts.Count > 1)
         {
-            variants.AddRange(parts.Select(p => ("TOPLAM − " + p.Name, (ISignal)new SumSignal([.. parts.Where(q => !ReferenceEquals(q, p))]), false)));
+            variants.AddRange(parts.Select(p => (
+                "TOPLAM − " + p.Name, (ISignal)new SumSignal([.. parts.Where(q => !ReferenceEquals(q, p))]), parts.Count - 1)));
         }
 
         // Önce TOPLAM(hepsi): eşiği, öteki satırların "sabit eşikli" sürümünde kullanılır.
@@ -65,19 +69,20 @@ public static class Ablation
 
         // Tek parça 0 ya da 1 puan verir (SumSignal). TOPLAM eşiği 1'in üstündeyse ("en az 2 parça") tek parça o eşiğe hiç
         // ulaşamaz: recall her zaman 0 çıkar ve fark yalnızca "−TOPLAM recall" olur. Bu sayı sinyal hakkında bilgi taşımaz,
-        // o yüzden basılmaz; yerine gerekçe yazılır (DECISIONS 2026-11-24). Koşul veriye değil yalnızca eşiğe bakar.
-        string? SkipReason(bool singlePart) => singlePart && full.Threshold > 1
-            ? "uygulanmaz: tek parça en çok 1 puan alır, TOPLAM eşiği 1'in üstünde"
+        // o yüzden basılmaz; yerine gerekçe yazılır (DECISIONS 2026-11-24). Koşul veriye değil yalnızca parça sayısına ve eşiğe
+        // bakar. "TOPLAM − x" satırında tek parça kalmışsa (iki parçalı koşu) aynı durum geçerlidir.
+        string? SkipReason(int partCount) => partCount == 1 && full.Threshold > 1
+            ? "uygulanmaz: tek parçalı satır en çok 1 puan alır, TOPLAM eşiği 1'in üstünde"
             : null;
 
         return [.. variants.Select(v => v.Name == FullName
             ? new AblationRow(v.Name, full)
             : new AblationRow(v.Name,
                 EvaluationRunner.Run(config, EvaluationMode.Historical, subjects, observations, v.Signal, now: at),
-                SkipReason(v.SinglePart) is null
+                SkipReason(v.PartCount) is null
                     ? EvaluationRunner.Run(config, EvaluationMode.Historical, subjects, observations, v.Signal, now: at, fixedThreshold: full.Threshold)
                     : null,
-                SkipReason(v.SinglePart)))];
+                SkipReason(v.PartCount)))];
     }
 
     /// <summary>
@@ -134,8 +139,9 @@ public static class Ablation
             sb.AppendLine();
             foreach (var s in r.Strata)
             {
-                sb.Append("    ").Append(s.Group).Append(" / ").Append(s.Subgroup).Append(s.LinkedToPositive ? " / pozitife bağlı" : string.Empty)
-                  .Append(": yanlış alarm ").AppendLine(EvaluationReport.Format(s.FalseAlarms));
+                // Ana raporla aynı biçimleyici: "yeterli örnek yok" ve Türkiye alt kümesinin tümleyen kuralı burada da geçerli.
+                sb.Append("    ").Append(EvaluationReport.StratumLabel(s, " / pozitife bağlı"))
+                  .Append(": yanlış alarm ").AppendLine(EvaluationReport.FormatStratum(s, r.Strata));
             }
         }
 

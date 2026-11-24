@@ -111,10 +111,15 @@ public sealed class ThresholdTests
 
         var full = rows.Single(r => r.Variant == Ablation.FullName);
         Assert.Null(full.AtFullThreshold);
-        // Parça çıkarılmış satırlar TOPLAM eşiğiyle çalışır. Bu veride TOPLAM eşiği 1'in üstünde (numbered G4'te sık 1 alır), o
-        // yüzden tek parçalı satırlarda sabit eşikli sürüm uygulanmaz (DECISIONS 2026-11-24): gerekçe yazılır, sayı yazılmaz.
-        Assert.All(rows.Where(r => r.Variant.StartsWith("TOPLAM − ", StringComparison.Ordinal)),
-            r => Assert.Equal(full.Report.Threshold, r.AtFullThreshold!.Threshold));
+        // Bu veride TOPLAM eşiği 1'in üstünde (numbered G4'te sık 1 alır). İki parça olduğu için "TOPLAM − x" satırlarında da
+        // tek parça kalır: Sabit eşikli sürüm hiçbir satırda uygulanmaz, gerekçe yazılır (DECISIONS 2026-11-24, ikinci kayıt).
+        // Eskiden "TOPLAM − x" satırları burada sabit eşikle çalışıyor ve fark hep "−TOPLAM recall" çıkıyordu.
+        Assert.True(full.Report.Threshold > 1);
+        Assert.All(rows.Where(r => r.Variant.StartsWith("TOPLAM − ", StringComparison.Ordinal)), r =>
+        {
+            Assert.Null(r.AtFullThreshold);
+            Assert.NotNull(r.AtFullThresholdSkipped);
+        });
         Assert.All(rows.Where(r => r.Variant != Ablation.FullName),
             r => Assert.True(r.AtFullThreshold is not null ^ r.AtFullThresholdSkipped is not null));
         Assert.Contains("kendi eşiğiyle", text, StringComparison.Ordinal);
@@ -217,6 +222,36 @@ public sealed class ThresholdTests
         }
 
         Assert.Contains("TOPLAM eşiğiyle uygulanmaz", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>Her birime 0 veren uydurma parça: TOPLAM eşiğini yükseltmez.</summary>
+    private sealed class AlwaysZeroSignal : ISignal
+    {
+        public string Name => "always-zero";
+
+        public double Score(AsOfView view) => 0;
+    }
+
+    /// <summary>
+    /// DECISIONS 2026-11-24 (ikinci kayıt): "Uygulanmaz" kararı parça sayısından ve eşikten gelir, sonuçtan gelmez. İki parça,
+    /// TOPLAM eşiği 1 ya da altında: Tek parçalı satır o eşiğe ulaşabilir, bu yüzden "TOPLAM − x" satırlarında sabit eşikli
+    /// sürüm yine çalışır.
+    /// </summary>
+    [Fact]
+    public void Ablation_keeps_fixed_threshold_for_one_remaining_part_when_sum_threshold_at_most_one()
+    {
+        var (subjects, observations) = Build(0, Subgroup.FrameNeutral, _ => string.Empty);
+        ISignal[] parts = [new BaselineSignal(), new AlwaysZeroSignal()];
+
+        var rows = Ablation.Run(Config(), subjects, observations, parts, Now);
+
+        var full = rows.Single(r => r.Variant == Ablation.FullName);
+        Assert.True(full.Report.Threshold <= 1);
+        Assert.All(rows.Where(r => r.Variant != Ablation.FullName), r =>
+        {
+            Assert.NotNull(r.AtFullThreshold);
+            Assert.Null(r.AtFullThresholdSkipped);
+        });
     }
 
     [Fact]

@@ -436,6 +436,48 @@ public sealed class EvaluationLoaderTests(PostgresFixture postgres) : IDisposabl
         }
     }
 
+    /// <summary>
+    /// DECISIONS 2026-11-24: G2 üyesinin Türkiye etiketi birime taşınır. "Yeterli örnek yok" bayrağı veritabanındaki G2 kurulum
+    /// kaydından okunur (seçilen &lt; 100); kurulum kaydı yoksa tutucu taraf seçilir (oran yok). Öteki grupları etkilemez.
+    /// </summary>
+    [Theory]
+    [InlineData(99, true)]
+    [InlineData(100, false)]
+    [InlineData(null, true)]
+    public async Task Loader_carries_turkey_label_and_g2_build_minimum_from_the_build_record(int? buildSize, bool belowMinimum)
+    {
+        await using var db = await postgres.CreateMigratedContextAsync();
+        var ct = TestContext.Current.CancellationToken;
+        var tr = Domain("g2-tr.example");
+        var other = Domain("g2-diger.example");
+        var g4 = Domain("g4-kontrol.example");
+        db.Domains.AddRange(tr, other, g4);
+        db.ControlMembers.Add(new Fraud.Domain.Control.ControlMember(tr, Fraud.Domain.Control.ControlGroup.G2, null, Now, null, "kontrol-g2", null, "kontrol-g2",
+            turkeyLinked: true));
+        db.ControlMembers.Add(new Fraud.Domain.Control.ControlMember(other, Fraud.Domain.Control.ControlGroup.G2, null, Now, null, "kontrol-g2", null, "kontrol-g2",
+            turkeyLinked: false));
+        db.ControlMembers.Add(new Fraud.Domain.Control.ControlMember(g4, Fraud.Domain.Control.ControlGroup.G4a, null, Now, null, "kontrol-g4a", "AB12C", "kontrol-g4a"));
+        if (buildSize is { } size)
+        {
+            db.ControlBuilds.Add(new Fraud.Domain.Control.ControlBuild(
+                Fraud.Domain.Control.ControlGroup.G2, Fraud.Domain.Control.ControlBuild.OneShot, Now, "kontrol-g2", null, "kontrol-g2", size, "{}"));
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        var loader = new EvaluationDataLoader(db, new PublicSuffixDomainNormalizer(), new byte[32]);
+        var data = await loader.LoadAsync(null, KnownAtPolicy.DefaultArchiveDelay, prospective: false, ct);
+
+        var g2 = data.Subjects.Where(s => s.Group == SubjectGroup.ControlFinanceNews).ToList();
+        Assert.Equal(2, g2.Count);
+        Assert.Equal(true, data.Subjects.Single(s => s.Id == loader.SubjectIdOf("g2-tr.example")).TurkeyLinked);
+        Assert.Equal(false, data.Subjects.Single(s => s.Id == loader.SubjectIdOf("g2-diger.example")).TurkeyLinked);
+        Assert.All(g2, s => Assert.Equal(belowMinimum, s.BuildBelowMinimum));
+        var random = Assert.Single(data.Subjects, s => s.Group == SubjectGroup.ControlRandom);
+        Assert.False(random.BuildBelowMinimum);
+        Assert.Null(random.TurkeyLinked);
+    }
+
     private RepoContext TempRepo()
     {
         Directory.CreateDirectory(_dir);

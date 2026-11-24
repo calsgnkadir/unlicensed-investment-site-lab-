@@ -59,6 +59,9 @@ public enum Subgroup
 /// </remarks>
 public sealed record Subject
 {
+    private readonly bool? _turkeyLinked;
+    private readonly bool _buildBelowMinimum;
+
     public Subject(
         string id,
         SubjectGroup group,
@@ -142,6 +145,44 @@ public sealed record Subject
 
     /// <summary>Üyeyi kayda geçiren taahhüt.</summary>
     public string? CommitmentId { get; init; }
+
+    /// <summary>
+    /// G2 üyesinin Türkiye bağı (control_members.turkey_linked, DECISIONS 2026-11-24). Süzgeç değil etikettir: Rapor G2'yi
+    /// hem tamamı hem bu alt küme için ayrı yazar. G2 dışındaki birimde <c>null</c> kalmak zorundadır.
+    /// </summary>
+    public bool? TurkeyLinked
+    {
+        get => _turkeyLinked;
+        init
+        {
+            // Object initializer kurucudan SONRA çalışır, Group burada artık dolu.
+            if (value is not null && Group != SubjectGroup.ControlFinanceNews)
+            {
+                throw new ArgumentException("Türkiye etiketi yalnızca G2 (finans haber) için anlamlı.", nameof(value));
+            }
+
+            _turkeyLinked = value;
+        }
+    }
+
+    /// <summary>
+    /// Birimin geldiği kontrol kurulumu "yeterli örnek yok" kuralına takıldı (G2: kurulumda 100'den az üye, DECISIONS
+    /// 2026-11-24). Böyle bir tabakada oran hiç hesaplanmaz, raporda yalnızca "yeterli örnek yok" yazar. Kural önceden
+    /// kayıtlıdır ve kurulum boyutuna bakar, sinyal sonucuna bakmaz.
+    /// </summary>
+    public bool BuildBelowMinimum
+    {
+        get => _buildBelowMinimum;
+        init
+        {
+            if (value && IsPositive)
+            {
+                throw new ArgumentException("'Yeterli örnek yok' yalnızca kontrol kurulumları için anlamlı.", nameof(value));
+            }
+
+            _buildBelowMinimum = value;
+        }
+    }
 
     /// <summary>
     /// Pozitifin alt grubu: ilk sertifika karardan en çok 365 gün önceyse "yeni", daha önceyse "eski", karardan sonraysa

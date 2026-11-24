@@ -59,8 +59,9 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
         var rejected = 0;
         var overlapping = 0;
         var memberRows = await db.ControlMembers
-            .Select(m => new { m.Domain.RegistrableDomain, m.Group, m.Frame, m.Week, m.CommitmentId, m.FirstCertificateAt })
+            .Select(m => new { m.Domain.RegistrableDomain, m.Group, m.Frame, m.Week, m.CommitmentId, m.FirstCertificateAt, m.TurkeyLinked })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var g2BelowMinimum = await G2BelowMinimumAsync(cancellationToken).ConfigureAwait(false);
         var controlRows = new List<ControlRow>();
         foreach (var m in memberRows)
         {
@@ -70,7 +71,9 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
                 continue;
             }
 
-            controlRows.Add(new ControlRow(m.RegistrableDomain, GroupOf(m.Group), FrameOf(m.Frame), false, m.FirstCertificateAt, null, m.Week, m.CommitmentId));
+            controlRows.Add(new ControlRow(
+                m.RegistrableDomain, GroupOf(m.Group), FrameOf(m.Frame), false, m.FirstCertificateAt, null, m.Week, m.CommitmentId, m.TurkeyLinked,
+                BuildBelowMinimum: m.Group == Fraud.Domain.Control.ControlGroup.G2 && g2BelowMinimum));
         }
 
         // 3) Gözlemler: kayıtlı alan adı → domains satırları.
@@ -138,6 +141,8 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
             {
                 Week = c.Week,
                 CommitmentId = c.CommitmentId,
+                TurkeyLinked = c.TurkeyLinked,
+                BuildBelowMinimum = c.BuildBelowMinimum,
             });
             observations.Add(NameObservation(c.Domain));
         }
@@ -165,6 +170,27 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
     /// </summary>
     private Observation NameObservation(string registrableDomain) =>
         new(IdOf(registrableDomain), ObservationKinds.Name, DateTimeOffset.MinValue, DateTimeOffset.MinValue, registrableDomain);
+
+    /// <summary>
+    /// G2 "yeterli örnek yok" kuralı (DECISIONS 2026-11-24): G2 kurulumunda 100'den az üye seçildiyse raporda G2 için oran
+    /// verilmez. Kaynak, veritabanındaki kurulum kaydıdır (control_builds.selected), data/private/control altındaki manifest değil.
+    /// </summary>
+    /// <remarks>
+    /// <para>Neden veritabanı: Kurulum kaydı üyelerle AYNI veritabanı işleminde yazılır (ControlStore.SaveAsync). Değerlendirme
+    /// üyeleri de buradan okuduğu için, üye varsa kayıt da vardır ve ikisi birbirini tutar. Manifest bu işlemden SONRA ayrı bir
+    /// dosyaya yazılır; arada süreç durursa manifest hiç olmayabilir, elle de değiştirilebilir. Manifestteki <c>enough_for_rates</c>
+    /// alanı da aynı sayıdan (seçilen üye sayısı) aynı eşikle üretilir; yani iki kaynak aynı şeyi söyler.</para>
+    /// <para>Kurulum kaydı yoksa ama G2 üyesi varsa (elle eklenmiş üye) kural "yetersiz" der: Kuralın geçtiği
+    /// kanıtlanamıyorsa oran basılmaz (tutucu taraf).</para>
+    /// </remarks>
+    private async Task<bool> G2BelowMinimumAsync(CancellationToken cancellationToken)
+    {
+        var sizes = await db.ControlBuilds
+            .Where(b => b.Group == Fraud.Domain.Control.ControlGroup.G2)
+            .Select(b => b.Selected)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return sizes.Count == 0 || sizes.Any(n => n < Fraud.Collectors.Control.G2WikidataCommands.MinimumForRates);
+    }
 
     /// <summary>Kimlik anahtarı: yoksa 32 rastgele bayt üretilir. Yalnızca data/private altında tutulur.</summary>
     public static byte[] LoadOrCreateKey(string path)
@@ -254,5 +280,5 @@ public sealed class EvaluationDataLoader(FraudDbContext db, IDomainNameNormalize
 
     private sealed record ControlRow(
         string Domain, SubjectGroup Group, Subgroup Subgroup, bool Linked, DateTimeOffset? FirstCertificateAt, DateTimeOffset? ReferenceTime,
-        string? Week, string? CommitmentId);
+        string? Week, string? CommitmentId, bool? TurkeyLinked, bool BuildBelowMinimum);
 }
