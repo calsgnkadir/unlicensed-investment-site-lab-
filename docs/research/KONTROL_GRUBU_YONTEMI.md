@@ -498,6 +498,11 @@ Kadircan bu bölümdeki 10 kararı aşağıdaki şekliyle onayladı. Belge, bu b
 
 ## Değişiklik kaydı
 
+- 2026-11-25 (G2 Wikidata kurulum sonucu, sinyal sonucu görülmeden):
+  - **Sorgu:** Donmuş sorgu (SHA-256 `4b6f1ed9…ab92`, tohum `kontrol-g2-wikidata-2026-11-21`) ilk denemede başarılı oldu (HTTP 200, 48.444 bayt, 2026-11-25T18:30:03Z). Ham cevabın SHA-256 değeri `cb676d77c7223311890ec1e0596a7292b93893026a3a0dbffd97887450517c4b`. İkinci ve üçüncü deneme gerekmedi.
+  - **Seçilen:** 106 alan adı. Taahhüt dosyası: `docs/evaluation/commitments/kontrol-g2.json`. Ayrıntı: 133 satır, 89 Wikidata öğesi, 27 tekrar, 0 geçersiz satır, 0 normalleştirilemeyen. 300 hedefine ulaşılmadı. 100'ün üstünde kaldığı için oranlar raporlanır.
+  - **Türkiye etiketi:** 106 kaydın hiçbiri Türkiye'ye bağlı değil. Ham cevaptaki 133 satırın 133'ünde de etiket "false". Bu, okuma hatası değil, Wikidata'nın cevabı. Sonuç olarak G2'nin Türkiye alt kümesi boştur, raporda "Türkiye bağlı alt küme yok" yazılır. G2, Türkiye'deki finans haber sitelerini temsil etmez. Bu, G2'nin bir sınırıdır.
+
 - 2026-11-25 (G3a önkoşul denemesi, bir kez, sinyal sonucu görülmeden):
   - **Sonuç: GEÇMEDİ.** Üç denemenin üçü de `TooFew` oldu: crt.sh tam ve geçerli bir cevap döndü (hata, zaman aşımı ya da kesik cevap yok), ama hedef ayda `not_before` değeri olan kayıtlı alan adı sayısı üçünde de 0 çıktı. Ölçüt 3 denemenin en az 2'sinde 50 ad idi.
   - **Sonuç:** Karar 7 gereği geçmiş veri testinde zaman eşleşmeli zor negatif (G3a) kullanılmaz. G3 yalnızca haftalık (G3b) olarak kurulur.
