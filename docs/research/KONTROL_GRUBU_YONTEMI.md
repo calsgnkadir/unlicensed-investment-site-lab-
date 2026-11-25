@@ -498,6 +498,11 @@ Kadircan bu bölümdeki 10 kararı aşağıdaki şekliyle onayladı. Belge, bu b
 
 ## Değişiklik kaydı
 
+- 2026-11-25 (G4b hafta 2026-W47 kurulum sonucu, sinyal sonucu görülmeden):
+  - **Seçilen:** Çerçeve N'den 46 alan adı. Taahhüt dosyası: `docs/evaluation/commitments/kontrol-g4b-2026-w47.json`.
+  - **Sayılar:** 600 crt.sh sorgusu yapıldı ve sorgu sınırı doldu. 24 sorgu hata verdi (E20), 60 adın crt.sh kaydı yoktu. Yaş tabakasının kotası dolu olduğu için atlanan: Middle'da 154, Old'da 316. PSL özel bölümü nedeniyle elenen: 165.953. Başka grupta olduğu için elenen (E02): 6.
+  - **Önceki denemeler (kural değişmedi, hiçbir sonuç görülmedi):** Bu hafta üç deneme sonuçsuz kaldı. 1) 2026-11-24: Ubuntu veritabanında Hafta 7 göçü (`AddControlMemberTurkeyLink`) eksikti. Taahhüt dosyası yazıldı, üyeler kaydedilemedi. 2) Aynı gün: İlk denemenin gizli açılış dosyası yerinde kaldığı için ad çakıştı, taahhüt oluşturulmadı. 3) 2026-11-25: Bilgisayar uyku moduna geçince süreç kesildi. Başarısız denemelerin dosyaları silinmedi, gizli klasörde ayrı tutuluyor. Hiçbiri yayımlanmadı. Yayımlanan tek G4b W47 taahhüdü bu kayıttaki.
+
 - 2026-11-23 (G3 hafta 2026-W47 kurulum sonucu, sinyal sonucu görülmeden):
   - **Seçilen:** Çerçeve N'den 5, çerçeve K'dan 0 alan adı (haftalık kota 60). Taahhüt dosyası: `docs/evaluation/commitments/kontrol-g3-2026-w47.json`.
   - **Sayılar:** 600 crt.sh sorgusu yapıldı ve sorgu sınırı doldu. 216 sorgu hata verdi (E20), 344 ad yeni değildi (ilk sertifika 28 günden eski), 35 adın crt.sh kaydı yoktu. PSL özel bölümü nedeniyle elenen: K'da 10.121, N'de 104.182. Sözlükte terim geçmeyen: K'da 108.279, N'de 256.927. Başka grupta olduğu için elenen (E02): 7.
