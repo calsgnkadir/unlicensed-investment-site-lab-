@@ -498,6 +498,11 @@ Kadircan bu bölümdeki 10 kararı aşağıdaki şekliyle onayladı. Belge, bu b
 
 ## Değişiklik kaydı
 
+- 2026-11-25 (G3a önkoşul denemesi, bir kez, sinyal sonucu görülmeden):
+  - **Sonuç: GEÇMEDİ.** Üç denemenin üçü de `TooFew` oldu: crt.sh tam ve geçerli bir cevap döndü (hata, zaman aşımı ya da kesik cevap yok), ama hedef ayda `not_before` değeri olan kayıtlı alan adı sayısı üçünde de 0 çıktı. Ölçüt 3 denemenin en az 2'sinde 50 ad idi.
+  - **Sonuç:** Karar 7 gereği geçmiş veri testinde zaman eşleşmeli zor negatif (G3a) kullanılmaz. G3 yalnızca haftalık (G3b) olarak kurulur.
+  - **Bilinen belirsizlik:** Deneme kaydı cevabın toplam satır sayısını tutmuyor. Bu yüzden "crt.sh boş cevap döndü" ile "cevapta o aya ait sertifika yoktu" durumları birbirinden ayrılamıyor. Kural gereği deneme sonuca bakılarak tekrarlanmaz. Bu belirsizlik raporda G3a'nın sınırı olarak yazılır.
+
 - 2026-11-25 (G4b hafta 2026-W47 kurulum sonucu, sinyal sonucu görülmeden):
   - **Seçilen:** Çerçeve N'den 46 alan adı. Taahhüt dosyası: `docs/evaluation/commitments/kontrol-g4b-2026-w47.json`.
   - **Sayılar:** 600 crt.sh sorgusu yapıldı ve sorgu sınırı doldu. 24 sorgu hata verdi (E20), 60 adın crt.sh kaydı yoktu. Yaş tabakasının kotası dolu olduğu için atlanan: Middle'da 154, Old'da 316. PSL özel bölümü nedeniyle elenen: 165.953. Başka grupta olduğu için elenen (E02): 6.
