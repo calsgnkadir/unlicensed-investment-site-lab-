@@ -218,3 +218,11 @@ Kadircan, ileriye dönük testin hiçbir sonucunu görmeden şu kararları verdi
 ## 2026-11-24: Karardan sonraki ağ durumu ayrı bölümde
 
 Kadircan, hiçbir ağ sonucu görmeden şunu onayladı: `net-describe` çıktısına, SPK kararından sonra ölçülen ağ durumunu gösteren ayrı bir bölüm eklenir. Bölümün başlığında "sinyal değil, yalnızca betimleme" yazar. Bu bölümdeki hiçbir sayı tespit, erken uyarı ya da precision sonucu olarak okunamaz ve raporda sinyal sonuçlarıyla aynı tabloya konmaz. Kontrol grupları için aynı ölçüm dönemi kullanılır. Küçük hücre kuralları aynen geçerlidir.
+
+## 2026-11-25: Küme kararları ve kanıt zaman çizelgesi aracı
+
+Kadircan, hiçbir sinyal, test ya da küme sonucu görmeden şu üç kararı verdi:
+
+1. **"Bölme değişir mi: evet/hayır" satırı onaylandı.** Bu istisna yalnızca `net-describe` çıktısındaki bu tek satır ve yalnızca SPK pozitifleri içindir. Pozitifler resmi listede olduğu için risk düşüktür. Kontrol gruplarına ve adaylara hiçbir zaman uygulanmaz. Öteki bütün satırlarda küçük hücre kuralı aynen geçerlidir.
+2. **Kümeler bölmeye verilmez, bölme değişmez.** Zamana göre bölme (ayar 2026/1–18, test 2026/20–77) korunur. Bunun yerine kilitli testte, önceden kayıtlı bir duyarlılık satırı raporlanır: Test sonucu bir kez bütün test kümesiyle, bir kez de ayar kümesindeki bir pozitifle aynı kümeye düşen test pozitifleri çıkarılarak verilir. İki rakam yan yana yazılır. Fark büyükse bu, grup sızıntısı olarak raporda açıkça belirtilir. Küme kuralı (`PositiveClusters`) bu satır için dondurulan kurallarla birlikte dondurulur.
+3. **Kanıt zaman çizelgesi aracı öne alındı.** Sıra: Hafta 48 kontrol grupları, kuralların dondurulması, ileriye dönük testin başlaması, ardından `evidence-report --domain <ad> --as-of <tarih>` komutu. Komut yalnızca veritabanından okur, ağa istek atmaz. "Veri yok" ile "kayıt yoktu" ayrımını korur. Sertifika için hem `not_before` hem CT'ye girdiği zaman yazılır. Herkese açık örnek çıktı yalnızca sentetik veriyle (`example.test`) üretilir. Web arayüzü Hafta 10'da kalır.
